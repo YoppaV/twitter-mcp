@@ -21,7 +21,17 @@ from mcp.server.fastmcp import FastMCP
 
 from .auth import SessionExpiredError, session_summary
 from .browser import DEFAULT_IDLE_TIMEOUT_S, BrowserSession
-from .endpoints import article, bookmarks, home, search, tweet, user
+from .endpoints import (
+    article,
+    bookmarks,
+    home,
+    search,
+    social_graph,
+    trends,
+    tweet,
+    user,
+)
+from .endpoints._ids import parse_tweet_id_or_url
 
 load_dotenv()
 
@@ -242,6 +252,158 @@ async def get_user_tweets(
             include_media_only=include_media_only,
         )
     return _serialize(tweets)
+
+
+@mcp.tool()
+async def get_trends(
+    category: str = "trending",
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    """Read the current Twitter/X trends for one of the explore tabs.
+
+    Args:
+        category: One of "trending", "news", "sports", "entertainment",
+            "for_you" (the user's personalized tab).
+        limit: Max trends to return (default 20).
+
+    Each item carries ``name``, ``query`` (raw search query), ``url``,
+    ``post_count`` (0 if not exposed) and ``category`` (domain context).
+    """
+    async with _browser.page() as page:
+        result = await trends.fetch(page, category=category, limit=limit)
+    return _serialize(result)
+
+
+@mcp.tool()
+async def get_user_followers(
+    handle: str,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    """List a user's followers, newest first.
+
+    Returns ``[]`` for protected/blocked accounts — not an error.
+
+    Args:
+        handle: Twitter handle without the leading "@".
+        limit: Max users to return (default 50).
+    """
+    async with _browser.page() as page:
+        result = await social_graph.fetch_followers(
+            page, handle=handle, limit=limit
+        )
+    return _serialize(result)
+
+
+@mcp.tool()
+async def get_user_following(
+    handle: str,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    """List who a user follows.
+
+    Returns ``[]`` for protected/blocked accounts — not an error.
+
+    Args:
+        handle: Twitter handle without the leading "@".
+        limit: Max users to return (default 50).
+    """
+    async with _browser.page() as page:
+        result = await social_graph.fetch_following(
+            page, handle=handle, limit=limit
+        )
+    return _serialize(result)
+
+
+@mcp.tool()
+async def get_user_mentions(
+    handle: str,
+    limit: int = 50,
+    mode: str = "latest",
+) -> list[dict[str, Any]]:
+    """Tweets mentioning ``@handle``.
+
+    Thin wrapper over ``search_tweets`` with query ``@<handle>``. Use
+    ``mode="latest"`` (default) for chronological monitoring or ``"top"``
+    for a relevance-ranked view.
+    """
+    async with _browser.page() as page:
+        tweets_ = await search.fetch(
+            page, query=f"@{handle}", mode=mode, limit=limit
+        )
+    return _serialize(tweets_)
+
+
+@mcp.tool()
+async def get_thread(id_or_url: str) -> dict[str, Any]:
+    """Reconstruct an author-only thread from a focal tweet.
+
+    Returns ``{"focal": Tweet|None, "thread": [Tweet, ...]}``: only replies
+    authored by the focal's author are included, sorted chronologically.
+    Replies from other accounts are dropped. Useful for "chase down a long
+    self-reply chain" without paging through unrelated commentary.
+    """
+    async with _browser.page() as page:
+        focal, thread = await tweet.fetch_thread(page, id_or_url=id_or_url)
+    return {
+        "focal": _serialize(focal),
+        "thread": _serialize(thread),
+    }
+
+
+@mcp.tool()
+async def get_tweet_quotes(
+    id_or_url: str,
+    limit: int = 50,
+    mode: str = "latest",
+) -> list[dict[str, Any]]:
+    """Quote-tweets of a tweet (people quoting it, not just retweeting).
+
+    Wraps ``search_tweets`` with ``quoted_tweet_id:<id>``. Twitter doesn't
+    expose all quotes for every account; if results look thin, retry with
+    a different ``mode`` or fall back to ``search_tweets`` with the tweet URL.
+    """
+    tweet_id, _ = parse_tweet_id_or_url(id_or_url)
+    async with _browser.page() as page:
+        tweets_ = await search.fetch(
+            page,
+            query=f"quoted_tweet_id:{tweet_id}",
+            mode=mode,
+            limit=limit,
+        )
+    return _serialize(tweets_)
+
+
+@mcp.tool()
+async def get_liking_users(
+    id_or_url: str,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    """Users who liked a tweet, newest like first.
+
+    Likes are public unless the tweet's author is protected. Returns ``[]``
+    if the like list is hidden by the author or empty.
+    """
+    async with _browser.page() as page:
+        result = await social_graph.fetch_likers(
+            page, id_or_url=id_or_url, limit=limit
+        )
+    return _serialize(result)
+
+
+@mcp.tool()
+async def get_retweeting_users(
+    id_or_url: str,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    """Users who retweeted a tweet (excludes quote-retweets).
+
+    For quote-retweets specifically, call ``get_tweet_quotes``.
+    """
+    async with _browser.page() as page:
+        result = await social_graph.fetch_retweeters(
+            page, id_or_url=id_or_url, limit=limit
+        )
+    return _serialize(result)
 
 
 def main() -> None:

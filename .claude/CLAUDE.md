@@ -18,6 +18,14 @@ There is no batch pipeline anymore. Claude calls the MCP tools directly.
 | `get_user_profile` | Bio + counters + pinned tweet id for `handle`. |
 | `get_user_tweets` | Profile timeline. `include_replies`, `include_media_only`. |
 | `get_x_article` | Full body of a native X long-form article by id/URL. |
+| `get_trends` | Explore-tab trends. `category` ("trending"\|"news"\|"sports"\|"entertainment"\|"for_you"), `limit`. |
+| `get_user_followers` | Followers of `handle`. `limit`. |
+| `get_user_following` | Accounts `handle` follows. `limit`. |
+| `get_user_mentions` | Tweets mentioning `@handle`. `limit`, `mode`. |
+| `get_thread` | Author-only self-reply chain rooted at `id_or_url`. |
+| `get_tweet_quotes` | Quote-tweets of a tweet. `limit`, `mode`. |
+| `get_liking_users` | Users who liked a tweet. `limit`. |
+| `get_retweeting_users` | Users who retweeted a tweet (not quote-retweets). `limit`. |
 
 All tools return plain JSON (dataclass → dict). No mutations: read-only by design.
 
@@ -25,18 +33,22 @@ All tools return plain JSON (dataclass → dict). No mutations: read-only by des
 
 ```
 src/twitter_sdk/
-├── server.py          # FastMCP entrypoint, registers the 7 tools
+├── server.py          # FastMCP entrypoint, registers the 16 tools
 ├── browser.py         # Async Playwright singleton (lazy, idle timeout, asyncio.Lock)
 ├── auth.py            # storage_state load + session_summary + login helpers
-├── models.py          # Tweet, MediaItem, XArticle, QuotedTweet, User
+├── models.py          # Tweet, MediaItem, XArticle, QuotedTweet, User, Trend
 ├── parsers.py         # GraphQL → dataclass extractors (pure)
 ├── scraper.py         # scroll_collect() + intercept_single_response()
-└── endpoints/         # bookmarks.py, home.py, tweet.py, search.py, user.py
+└── endpoints/
+    ├── _ids.py            # shared handle / tweet-id / article-id parsers
+    ├── bookmarks · home · tweet · search · user · article
+    ├── trends.py          # get_trends — explore tabs (GenericTimelineById)
+    └── social_graph.py    # followers · following · likers · retweeters
 ```
 
-`scraper.scroll_collect` is parameterized by URL + GraphQL fragment + extractor;
-all 5 timeline endpoints reuse it. `tweet` and `user.fetch_profile` use
-`intercept_single_response` (no scrolling).
+`scraper.scroll_collect` is generic over the item type (`Tweet`, `User`,
+`Trend`); pass a custom `key_of=` to dedupe non-tweet payloads. `tweet.fetch`
+and `user.fetch_profile` use `intercept_single_response` (no scrolling).
 
 ## Running the server
 
@@ -103,16 +115,20 @@ payloads through them.
 ## When GraphQL fragments break
 
 Twitter occasionally rotates its GraphQL operation hashes. The fragment names
-(e.g. `Bookmarks`, `HomeTimeline`, `TweetDetail`) are stable — they're embedded
-in the URL path. If a tool starts returning empty lists:
+(e.g. `Bookmarks`, `HomeTimeline`, `TweetDetail`, `Followers`, `Favoriters`,
+`GenericTimelineById`) are stable — they're embedded in the URL path. If a
+tool starts returning empty lists:
 
 1. Open `https://x.com/<relevant-page>` in DevTools (Network tab, filter
    "graphql").
 2. Find the request whose URL contains the operation we expect.
 3. If the fragment name moved, update the constant in
-   `src/twitter_sdk/endpoints/<name>.py` (e.g. `FRAGMENT = "/Bookmarks"`).
+   `src/twitter_sdk/endpoints/<name>.py` (e.g. `FRAGMENT = "/Bookmarks"`,
+   `FOLLOWERS_FRAGMENT = "/Followers"`).
 4. Capture the JSON response into `tests/fixtures/graphql_<name>.json` and
    add a parser test.
+
+The trends parser (`extract_trends`) tolerates `data.timeline_response.timeline_response.timeline.instructions` and a flatter `data.timeline.instructions` shape. If both fail, capture a fresh fixture from `https://x.com/explore/tabs/trending` and adjust the path-walk in `parsers._trends_from_entry`.
 
 ## What was removed
 

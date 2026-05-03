@@ -13,7 +13,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Callable, Iterable
 
-from .models import MediaItem, QuotedTweet, Tweet, User, XArticle
+from .models import MediaItem, QuotedTweet, Trend, Tweet, User, XArticle
 
 _PHOTO_NAME_QUERY = "?name=orig"
 
@@ -361,16 +361,16 @@ def extract_tweet_detail(payload: dict[str, Any]) -> list[Tweet]:
     return _walk_timeline(convo)
 
 
-def extract_user_profile(payload: dict[str, Any]) -> User | None:
-    """UserByScreenName payload → User dataclass.
+def _user_from_result(result: dict[str, Any] | None) -> User | None:
+    """Build a User from a ``user_results.result`` (or top-level ``result``) node.
 
-    Layout: ``data.user.result`` carries ``core`` (handle/name) +
-    ``legacy`` (counters, bio) + ``rest_id``.
+    Used by both ``extract_user_profile`` (single user) and
+    ``extract_user_list`` (followers/following/likers/retweeters timelines),
+    which carry the same node shape.
     """
-    data = payload.get("data") or {}
-    user = data.get("user") or {}
-    result = user.get("result")
     if not result:
+        return None
+    if result.get("__typename") == "UserUnavailable":
         return None
 
     core = result.get("core") or {}
@@ -383,6 +383,8 @@ def extract_user_profile(payload: dict[str, Any]) -> User | None:
     handle = core.get("screen_name") or legacy.get("screen_name") or ""
     name = core.get("name") or legacy.get("name") or ""
     user_id = result.get("rest_id") or legacy.get("id_str") or ""
+    if not user_id and not handle:
+        return None
 
     bio = legacy.get("description", "") or ""
     url = ""
@@ -411,6 +413,181 @@ def extract_user_profile(payload: dict[str, Any]) -> User | None:
         profile_image_url=avatar.get("image_url") or legacy.get("profile_image_url_https", "") or "",
         pinned_tweet_id=pinned_tweet_id,
     )
+
+
+def extract_user_profile(payload: dict[str, Any]) -> User | None:
+    """UserByScreenName payload → User dataclass.
+
+    Layout: ``data.user.result`` carries ``core`` (handle/name) +
+    ``legacy`` (counters, bio) + ``rest_id``.
+    """
+    data = payload.get("data") or {}
+    user = data.get("user") or {}
+    return _user_from_result(user.get("result"))
+
+
+def extract_user_list(payload: dict[str, Any]) -> list[User]:
+    """Parse a Followers / Following / Favoriters / Retweeters payload.
+
+    All four timelines share a structure:
+    ``data.user.result.timeline.timeline.instructions[]`` holding entries with
+    ``content.itemContent.user_results.result``. Reuses
+    ``_iter_timeline_instructions`` so pin / module / add-entries shapes all
+    work.
+    """
+    data = payload.get("data") or {}
+    user = data.get("user") or {}
+    result = user.get("result") or {}
+    timeline_v2 = result.get("timeline") or result.get("timeline_v2") or {}
+    timeline_root = timeline_v2.get("timeline") or {}
+
+    users: list[User] = []
+    seen: set[str] = set()
+    for entry in _iter_timeline_instructions(timeline_root):
+        for parsed in _users_from_entry(entry):
+            key = parsed.user_id or parsed.handle
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            users.append(parsed)
+    return users
+
+
+def _users_from_entry(entry: dict[str, Any]) -> Iterable[User]:
+    content = entry.get("content") or {}
+    entry_type = content.get("entryType")
+    entry_id = str(entry.get("entryId") or "")
+
+    if "promoted-" in entry_id or entry_id.startswith("promotedTweet-"):
+        return
+
+    if entry_type in (None, "TimelineTimelineItem"):
+        item_content = content.get("itemContent") or {}
+        item_type = item_content.get("itemType")
+        if item_type and item_type != "TimelineUser":
+            return
+        user = _user_from_user_results(item_content)
+        if user is not None:
+            yield user
+        return
+
+    if entry_type == "TimelineTimelineModule":
+        for item in content.get("items") or []:
+            inner = item.get("item") or {}
+            item_content = inner.get("itemContent") or {}
+            item_type = item_content.get("itemType")
+            if item_type and item_type != "TimelineUser":
+                continue
+            user = _user_from_user_results(item_content)
+            if user is not None:
+                yield user
+
+
+def _user_from_user_results(item_content: dict[str, Any]) -> User | None:
+    user_results = item_content.get("user_results") or {}
+    return _user_from_result(user_results.get("result"))
+
+
+def extract_trends(payload: dict[str, Any]) -> list[Trend]:
+    """Parse a GenericTimelineById trends payload into Trend objects.
+
+    Trends entries carry an ``itemContent.itemType == "TimelineTrend"`` with a
+    ``name``, optional ``trend_url.url``, and ``trend_metadata`` carrying the
+    domain context (category) plus ``meta_description`` (post count, e.g.
+    ``"15.2K posts"``).
+    """
+    data = payload.get("data") or {}
+    timeline_response = data.get("timeline_response") or data.get("timeline") or {}
+    inner = timeline_response.get("timeline_response") or timeline_response
+    timeline_root = inner.get("timeline") or inner
+
+    trends: list[Trend] = []
+    seen: set[str] = set()
+    for entry in _iter_timeline_instructions(timeline_root):
+        for trend in _trends_from_entry(entry):
+            if trend.name in seen:
+                continue
+            seen.add(trend.name)
+            trends.append(trend)
+    return trends
+
+
+def _trends_from_entry(entry: dict[str, Any]) -> Iterable[Trend]:
+    content = entry.get("content") or {}
+    entry_type = content.get("entryType")
+
+    if entry_type in (None, "TimelineTimelineItem"):
+        item_content = content.get("itemContent") or {}
+        item_type = item_content.get("itemType")
+        if item_type and item_type != "TimelineTrend":
+            return
+        trend = _trend_from_item_content(item_content)
+        if trend is not None:
+            yield trend
+        return
+
+    if entry_type == "TimelineTimelineModule":
+        for item in content.get("items") or []:
+            inner = item.get("item") or {}
+            item_content = inner.get("itemContent") or {}
+            item_type = item_content.get("itemType")
+            if item_type and item_type != "TimelineTrend":
+                continue
+            trend = _trend_from_item_content(item_content)
+            if trend is not None:
+                yield trend
+
+
+def _trend_from_item_content(item_content: dict[str, Any]) -> Trend | None:
+    trend_node = item_content.get("trend") or item_content
+    name = trend_node.get("name") or trend_node.get("trend_name") or ""
+    if not name:
+        return None
+
+    trend_url = trend_node.get("trend_url") or {}
+    if isinstance(trend_url, dict):
+        url = trend_url.get("url") or ""
+    else:
+        url = trend_url
+
+    metadata = trend_node.get("trend_metadata") or {}
+    category = metadata.get("domain_context") or ""
+    meta_description = metadata.get("meta_description") or ""
+    post_count = _parse_post_count(meta_description)
+
+    query = trend_node.get("trend_keyword") or name
+    return Trend(
+        name=name,
+        query=query,
+        url=url or f"https://x.com/search?q={name}",
+        post_count=post_count,
+        category=category,
+    )
+
+
+def _parse_post_count(text: str) -> int:
+    """Extract a numeric count from strings like ``"15.2K posts"`` or ``"302 Tweets"``."""
+    if not text:
+        return 0
+    cleaned = text.strip().split()
+    if not cleaned:
+        return 0
+    head = cleaned[0].replace(",", "")
+    multiplier = 1
+    if head.endswith(("K", "k")):
+        multiplier = 1_000
+        head = head[:-1]
+    elif head.endswith(("M", "m")):
+        multiplier = 1_000_000
+        head = head[:-1]
+    elif head.endswith(("B", "b")):
+        multiplier = 1_000_000_000
+        head = head[:-1]
+    try:
+        value = float(head)
+    except ValueError:
+        return 0
+    return int(value * multiplier)
 
 
 # Map from fragment name → extractor. Used by the generic scroll loop.

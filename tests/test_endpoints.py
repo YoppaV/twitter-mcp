@@ -27,6 +27,8 @@ from twitter_sdk.endpoints import (  # noqa: E402
     bookmarks,
     home,
     search,
+    social_graph,
+    trends,
     tweet,
     user,
 )
@@ -347,6 +349,125 @@ class UserEndpointTests(unittest.TestCase):
         with _no_sleep_patch():
             _run(user.fetch_tweets(page, handle="eve", include_media_only=True))
         self.assertEqual(page.goto_calls, ["https://x.com/eve/media"])
+
+
+class TrendsEndpointTests(unittest.TestCase):
+    def test_returns_trends_for_default_category(self) -> None:
+        page = FakePage(
+            responses=[
+                FakeResponse(
+                    "https://x.com/i/api/graphql/abc/GenericTimelineById",
+                    _load("graphql_trends.json"),
+                )
+            ]
+        )
+        with _no_sleep_patch():
+            result = _run(trends.fetch(page, category="trending", limit=10))
+        self.assertEqual([t.name for t in result], ["Claude 4.7", "Real Madrid", "#NewYearsDay"])
+        self.assertEqual(page.goto_calls, ["https://x.com/explore/tabs/trending"])
+
+    def test_each_category_has_distinct_url(self) -> None:
+        for category, url in trends.URL_BY_CATEGORY.items():
+            page = FakePage(
+                responses=[
+                    FakeResponse(
+                        "https://x.com/i/api/graphql/abc/GenericTimelineById",
+                        _load("graphql_trends.json"),
+                    )
+                ]
+            )
+            with _no_sleep_patch():
+                _run(trends.fetch(page, category=category, limit=1))
+            self.assertEqual(page.goto_calls, [url], category)
+
+    def test_invalid_category_rejected(self) -> None:
+        page = FakePage()
+        with self.assertRaises(ValueError):
+            _run(trends.fetch(page, category="garbage"))
+
+
+class SocialGraphEndpointTests(unittest.TestCase):
+    def _page_with_users(self, fragment: str) -> FakePage:
+        return FakePage(
+            responses=[
+                FakeResponse(
+                    f"https://x.com/i/api/graphql/abc{fragment}",
+                    _load("graphql_user_list.json"),
+                )
+            ]
+        )
+
+    def test_followers_navigates_followers_page(self) -> None:
+        page = self._page_with_users(social_graph.FOLLOWERS_FRAGMENT)
+        with _no_sleep_patch():
+            users = _run(social_graph.fetch_followers(page, handle="ivy"))
+        self.assertEqual([u.handle for u in users], ["alice", "bob"])
+        self.assertEqual(page.goto_calls, ["https://x.com/ivy/followers"])
+
+    def test_following_navigates_following_page(self) -> None:
+        page = self._page_with_users(social_graph.FOLLOWING_FRAGMENT)
+        with _no_sleep_patch():
+            users = _run(social_graph.fetch_following(page, handle="ivy"))
+        self.assertEqual(len(users), 2)
+        self.assertEqual(page.goto_calls, ["https://x.com/ivy/following"])
+
+    def test_likers_navigates_to_likes_subpath(self) -> None:
+        page = self._page_with_users(social_graph.FAVORITERS_FRAGMENT)
+        with _no_sleep_patch():
+            users = _run(social_graph.fetch_likers(page, id_or_url="9999"))
+        self.assertEqual(len(users), 2)
+        self.assertEqual(page.goto_calls, ["https://x.com/i/web/status/9999/likes"])
+
+    def test_likers_uses_handle_path_when_url_input(self) -> None:
+        page = self._page_with_users(social_graph.FAVORITERS_FRAGMENT)
+        with _no_sleep_patch():
+            _run(
+                social_graph.fetch_likers(
+                    page, id_or_url="https://x.com/frank/status/9999"
+                )
+            )
+        self.assertEqual(page.goto_calls, ["https://x.com/frank/status/9999/likes"])
+
+    def test_retweeters_navigates_to_retweets_subpath(self) -> None:
+        page = self._page_with_users(social_graph.RETWEETERS_FRAGMENT)
+        with _no_sleep_patch():
+            users = _run(social_graph.fetch_retweeters(page, id_or_url="9999"))
+        self.assertEqual(len(users), 2)
+        self.assertEqual(page.goto_calls, ["https://x.com/i/web/status/9999/retweets"])
+
+    def test_invalid_handle_rejected(self) -> None:
+        page = FakePage()
+        with self.assertRaises(ValueError):
+            _run(social_graph.fetch_followers(page, handle="bad handle!"))
+
+    def test_invalid_tweet_id_rejected(self) -> None:
+        page = FakePage()
+        with self.assertRaises(ValueError):
+            _run(social_graph.fetch_likers(page, id_or_url="nope"))
+
+
+class ThreadEndpointTests(unittest.TestCase):
+    def test_filters_to_focal_author_only(self) -> None:
+        page = FakePage(
+            responses=[
+                FakeResponse(
+                    "https://x.com/i/api/graphql/abc/TweetDetail",
+                    _load("graphql_tweet_thread.json"),
+                )
+            ]
+        )
+        focal, thread = _run(tweet.fetch_thread(page, id_or_url="9000"))
+        assert focal is not None
+        self.assertEqual(focal.tweet_id, "9000")
+        self.assertEqual([t.tweet_id for t in thread], ["9001", "9003"])
+        self.assertTrue(all(t.author_handle == "frank" for t in thread))
+
+    def test_returns_empty_when_focal_missing(self) -> None:
+        page = FakePage(responses=[])
+        with mock.patch.object(scraper_mod, "SINGLE_FETCH_TIMEOUT_S", 0.05):
+            focal, thread = _run(tweet.fetch_thread(page, id_or_url="9999"))
+        self.assertIsNone(focal)
+        self.assertEqual(thread, [])
 
 
 class ArticlePage:

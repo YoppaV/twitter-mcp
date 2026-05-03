@@ -18,7 +18,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from twitter_sdk import parsers
-from twitter_sdk.models import Tweet, User
+from twitter_sdk.models import Trend, Tweet, User
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -107,6 +107,56 @@ class UserProfileParserTests(unittest.TestCase):
 
     def test_returns_none_when_missing(self) -> None:
         self.assertIsNone(parsers.extract_user_profile({"data": {}}))
+
+
+class ExtractUserListTests(unittest.TestCase):
+    def test_skips_unavailable_users_keeps_order(self) -> None:
+        users = parsers.extract_user_list(_load("graphql_user_list.json"))
+        self.assertEqual([u.handle for u in users], ["alice", "bob"])
+
+    def test_user_fields_populated(self) -> None:
+        users = parsers.extract_user_list(_load("graphql_user_list.json"))
+        first = users[0]
+        self.assertIsInstance(first, User)
+        self.assertEqual(first.user_id, "200")
+        self.assertEqual(first.name, "Alice")
+        self.assertEqual(first.bio, "alice bio")
+        self.assertEqual(first.followers_count, 100)
+        self.assertEqual(first.following_count, 50)
+        self.assertEqual(first.tweet_count, 1000)
+        self.assertFalse(first.verified)
+
+    def test_empty_payload_returns_empty(self) -> None:
+        self.assertEqual(parsers.extract_user_list({}), [])
+        self.assertEqual(parsers.extract_user_list({"data": {}}), [])
+
+
+class ExtractTrendsTests(unittest.TestCase):
+    def test_extracts_trends_in_order(self) -> None:
+        trends = parsers.extract_trends(_load("graphql_trends.json"))
+        names = [t.name for t in trends]
+        self.assertEqual(names, ["Claude 4.7", "Real Madrid", "#NewYearsDay"])
+
+    def test_post_count_parses_suffixes(self) -> None:
+        trends = parsers.extract_trends(_load("graphql_trends.json"))
+        by_name = {t.name: t for t in trends}
+        self.assertEqual(by_name["Claude 4.7"].post_count, 15_200)
+        self.assertEqual(by_name["Real Madrid"].post_count, 302_000)
+
+    def test_post_count_defaults_to_zero(self) -> None:
+        trends = parsers.extract_trends(_load("graphql_trends.json"))
+        by_name = {t.name: t for t in trends}
+        self.assertEqual(by_name["#NewYearsDay"].post_count, 0)
+
+    def test_trend_carries_category_and_url(self) -> None:
+        trends = parsers.extract_trends(_load("graphql_trends.json"))
+        first = trends[0]
+        self.assertIsInstance(first, Trend)
+        self.assertEqual(first.category, "Technology")
+        self.assertTrue(first.url.startswith("https://x.com/search?q="))
+
+    def test_empty_payload_returns_empty(self) -> None:
+        self.assertEqual(parsers.extract_trends({}), [])
 
 
 class CreatedAtParserTests(unittest.TestCase):

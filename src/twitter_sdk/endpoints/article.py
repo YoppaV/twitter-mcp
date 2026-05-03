@@ -11,11 +11,11 @@ HTML (for callers who want links/markup preserved).
 
 from __future__ import annotations
 
-import re
 from typing import TYPE_CHECKING
 
 from ..auth import SessionExpiredError, is_login_redirect
 from ..models import Article
+from ._ids import parse_article_id_or_url
 
 if TYPE_CHECKING:
     from playwright.async_api import Page
@@ -25,27 +25,10 @@ READER_SELECTOR = '[data-testid="twitterArticleReadView"]'
 TITLE_SELECTOR = "h1"
 WAIT_TIMEOUT_MS = 8000
 
-_ID_RE = re.compile(r"(\d+)")
-_ARTICLE_PATH_RE = re.compile(r"/i/article/(\d+)")
-
-
-def _parse_id_or_url(id_or_url: str) -> str:
-    text = id_or_url.strip()
-    path_match = _ARTICLE_PATH_RE.search(text)
-    if path_match:
-        return path_match.group(1)
-    id_match = _ID_RE.fullmatch(text)
-    if id_match:
-        return id_match.group(1)
-    raise ValueError(
-        f"Could not parse an article id from {id_or_url!r}. "
-        "Pass the numeric id or a https://x.com/i/article/<id> URL."
-    )
-
 
 async def fetch(page: "Page", *, id_or_url: str) -> Article | None:
     """Return the full Article body, or None if the page didn't render."""
-    article_id = _parse_id_or_url(id_or_url)
+    article_id = parse_article_id_or_url(id_or_url)
     url = URL_TEMPLATE.format(article_id=article_id)
 
     await page.goto(url, wait_until="domcontentloaded")

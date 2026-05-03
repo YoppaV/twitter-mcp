@@ -94,3 +94,12 @@ class User:
     listed_count: int
     profile_image_url: str
     pinned_tweet_id: str | None
+
+
+@dataclass(frozen=True)
+class Trend:
+    name: str
+    query: str
+    url: str
+    post_count: int
+    category: str

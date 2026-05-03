@@ -15,7 +15,6 @@ import random
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, TypeVar
 
 from .auth import SessionExpiredError, is_login_redirect
-from .models import Tweet
 
 if TYPE_CHECKING:
     from playwright.async_api import Page, Response
@@ -29,6 +28,11 @@ SINGLE_FETCH_TIMEOUT_S = 20.0
 
 T = TypeVar("T")
 Extractor = Callable[[dict[str, Any]], list[T]]
+
+
+def _default_key_of(item: Any) -> str:
+    """Default key extractor: use ``tweet_id`` (stable across timeline shapes)."""
+    return getattr(item, "tweet_id", "") or ""
 
 
 def _make_response_handler(
@@ -63,24 +67,28 @@ async def scroll_collect(
     page: "Page",
     initial_url: str,
     fragment: str,
-    extractor: Extractor[Tweet],
+    extractor: Extractor[T],
     *,
     limit: int | None = None,
     max_scrolls: int = DEFAULT_MAX_SCROLLS,
     empty_streak_stop: int = EMPTY_SCROLLS_BEFORE_STOP,
     since_id: str | None = None,
-) -> list[Tweet]:
-    """Scroll ``initial_url`` and collect Tweets parsed from ``fragment``.
+    key_of: Callable[[T], str] | None = None,
+) -> list[T]:
+    """Scroll ``initial_url`` and collect items parsed from ``fragment``.
 
-    Stops when ``limit`` reached, when scrolling produces no new tweets for
+    Stops when ``limit`` reached, when scrolling produces no new items for
     ``empty_streak_stop`` iterations, when ``since_id`` is found, or when
-    ``max_scrolls`` is exhausted.
+    ``max_scrolls`` is exhausted. ``key_of`` defaults to ``item.tweet_id``;
+    pass a different extractor for User/Trend timelines.
     """
-    collected: dict[str, Tweet] = {}
+    if key_of is None:
+        key_of = _default_key_of
+    collected: dict[str, T] = {}
     order: list[str] = []
 
     handler = _make_response_handler(
-        fragment, extractor, collected, order, key_of=lambda t: t.tweet_id
+        fragment, extractor, collected, order, key_of=key_of
     )
     page.on("response", handler)
 
@@ -119,7 +127,7 @@ async def scroll_collect(
 
 
 def _should_stop(
-    collected: dict[str, Tweet],
+    collected: dict[str, T],
     order: list[str],
     limit: int | None,
     since_id: str | None,
@@ -132,20 +140,20 @@ def _should_stop(
 
 
 def _materialize(
-    collected: dict[str, Tweet],
+    collected: dict[str, T],
     order: list[str],
     limit: int | None,
     since_id: str | None,
-) -> list[Tweet]:
-    """Return tweets in observed order, applying limit and since_id boundary."""
-    tweets: list[Tweet] = []
-    for tid in order:
-        if since_id is not None and tid == since_id:
+) -> list[T]:
+    """Return items in observed order, applying limit and since_id boundary."""
+    items: list[T] = []
+    for key in order:
+        if since_id is not None and key == since_id:
             break
-        tweets.append(collected[tid])
-        if limit is not None and len(tweets) >= limit:
+        items.append(collected[key])
+        if limit is not None and len(items) >= limit:
             break
-    return tweets
+    return items
 
 
 async def intercept_single_response(

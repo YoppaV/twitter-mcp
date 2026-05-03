@@ -5,6 +5,14 @@ user profiles via Playwright + GraphQL response interception. See
 ``twitter_sdk.server`` for the MCP entrypoint.
 """
 
-from .models import Article, MediaItem, QuotedTweet, Tweet, User, XArticle
+from .models import Article, MediaItem, QuotedTweet, Trend, Tweet, User, XArticle
 
-__all__ = ["Article", "MediaItem", "QuotedTweet", "Tweet", "User", "XArticle"]
+__all__ = [
+    "Article",
+    "MediaItem",
+    "QuotedTweet",
+    "Trend",
+    "Tweet",
+    "User",
+    "XArticle",
+]

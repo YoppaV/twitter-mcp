@@ -10,16 +10,26 @@ or DMs — to minimize the chance of getting your account flagged.
 
 ## What it gives Claude
 
-Seven tools, all returning plain JSON:
+16 tools, all returning plain JSON:
 
-- `auth_status` — is the session loaded?
-- `get_bookmarks(limit, since_id)` — your bookmarks, newest first
-- `get_home_timeline(limit, feed, since_id)` — `for_you` or `following`
-- `get_tweet(id_or_url, include_replies, include_quote)` — focal tweet + thread
-- `search_tweets(query, mode, limit)` — `top` or `latest`
-- `get_user_profile(handle)` — bio, counters, pinned tweet
-- `get_user_tweets(handle, limit, include_replies, include_media_only)`
-- `get_x_article(id_or_url)` — full body of a native X long-form article
+| Tool | What it does |
+|---|---|
+| `auth_status` | Is the session loaded? (No network call.) |
+| `get_bookmarks(limit, since_id)` | Your bookmarks, newest first. |
+| `get_home_timeline(limit, feed, since_id)` | `for_you` or `following`. |
+| `get_tweet(id_or_url, include_replies, include_quote)` | Focal tweet + replies + quoted. |
+| `search_tweets(query, mode, limit)` | Twitter search, `top` or `latest`. |
+| `get_user_profile(handle)` | Bio, counters, pinned tweet. |
+| `get_user_tweets(handle, limit, include_replies, include_media_only)` | Profile timeline. |
+| `get_x_article(id_or_url)` | Full body of a native X long-form article. |
+| `get_trends(category, limit)` | Explore tab trends — `trending`, `news`, `sports`, `entertainment`, `for_you`. |
+| `get_user_followers(handle, limit)` | Who follows this user (newest first). |
+| `get_user_following(handle, limit)` | Who this user follows. |
+| `get_user_mentions(handle, limit, mode)` | Tweets that mention `@handle`. |
+| `get_thread(id_or_url)` | Author-only self-reply chain from a focal tweet. |
+| `get_tweet_quotes(id_or_url, limit, mode)` | Quote-tweets of a tweet. |
+| `get_liking_users(id_or_url, limit)` | Users who liked a tweet. |
+| `get_retweeting_users(id_or_url, limit)` | Users who retweeted (excludes quotes). |
 
 ## Setup
 
@@ -76,7 +86,7 @@ Quick poke from the command line:
 npx @modelcontextprotocol/inspector venv/bin/python -m twitter_sdk.server
 ```
 
-The inspector lists the seven tools and lets you call them with arbitrary
+The inspector lists every registered tool and lets you call them with arbitrary
 arguments.
 
 ## Connecting Claude Code
@@ -126,18 +136,22 @@ Logs (Desktop): `~/Library/Logs/Claude/` (macOS).
 
 ```
 src/twitter_sdk/
-├── server.py          FastMCP — registers the 7 tools
+├── server.py          FastMCP — registers the 16 tools
 ├── browser.py         Async Playwright singleton + idle shutdown + asyncio.Lock
 ├── auth.py            storage_state load + session_summary + login helpers
-├── models.py          Tweet / MediaItem / XArticle / QuotedTweet / User
+├── models.py          Tweet / MediaItem / XArticle / QuotedTweet / User / Trend
 ├── parsers.py         GraphQL → dataclass extractors (pure)
 ├── scraper.py         scroll_collect() + intercept_single_response()
-└── endpoints/         bookmarks · home · tweet · search · user
+└── endpoints/
+    ├── _ids.py        shared handle / tweet-id / article-id parsers
+    ├── bookmarks · home · tweet · search · user · article
+    ├── trends         get_trends — explore tabs
+    └── social_graph   followers · following · likers · retweeters
 ```
 
-`scraper.scroll_collect` takes `(url, fragment, extractor)`. All 5 timeline
-endpoints share that one loop; only their starting URL and GraphQL fragment
-differ.
+`scraper.scroll_collect` is generic over the item type — it takes
+`(url, fragment, extractor)` plus an optional `key_of` for deduplication.
+All timeline endpoints (tweets, users, trends) share that one loop.
 
 ## Tests
 
@@ -145,8 +159,8 @@ differ.
 venv/bin/python -m unittest discover tests -v
 ```
 
-43 tests, all offline. Fixture-driven (`tests/fixtures/graphql_*.json`) — no
-network, no real browser. The endpoint tests use a `FakePage` that records the
+All offline. Fixture-driven (`tests/fixtures/graphql_*.json`) — no network,
+no real browser. The endpoint tests use a `FakePage` that records the
 `response` event handler, then dispatches synthetic Twitter GraphQL payloads
 through it to exercise the full path through `scroll_collect()`.
 
