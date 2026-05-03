@@ -1,0 +1,116 @@
+{
+  "data": {
+    "threaded_conversation_with_injections_v2": {
+      "instructions": [
+        {
+          "type": "TimelineAddEntries",
+          "entries": [
+            {
+              "entryId": "tweet-8000",
+              "content": {
+                "entryType": "TimelineTimelineItem",
+                "itemContent": {
+                  "itemType": "TimelineTweet",
+                  "tweet_results": {
+                    "result": {
+                      "rest_id": "8000",
+                      "core": {
+                        "user_results": {
+                          "result": {
+                            "rest_id": "80",
+                            "core": {"screen_name": "frank", "name": "Frank"}
+                          }
+                        }
+                      },
+                      "legacy": {
+                        "id_str": "8000",
+                        "created_at": "Sat Apr 18 10:00:00 +0000 2026",
+                        "full_text": "Focal tweet",
+                        "favorite_count": 50,
+                        "retweet_count": 5,
+                        "reply_count": 2,
+                        "quote_count": 0,
+                        "lang": "en",
+                        "entities": {"hashtags": [], "user_mentions": [], "urls": []}
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "entryId": "conversationthread-8001",
+              "content": {
+                "entryType": "TimelineTimelineModule",
+                "items": [
+                  {
+                    "item": {
+                      "itemContent": {
+                        "itemType": "TimelineTweet",
+                        "tweet_results": {
+                          "result": {
+                            "rest_id": "8001",
+                            "core": {
+                              "user_results": {
+                                "result": {
+                                  "rest_id": "81",
+                                  "core": {"screen_name": "grace", "name": "Grace"}
+                                }
+                              }
+                            },
+                            "legacy": {
+                              "id_str": "8001",
+                              "created_at": "Sat Apr 18 10:05:00 +0000 2026",
+                              "full_text": "Reply from Grace",
+                              "favorite_count": 1,
+                              "retweet_count": 0,
+                              "reply_count": 0,
+                              "quote_count": 0,
+                              "lang": "en",
+                              "entities": {"hashtags": [], "user_mentions": [], "urls": []}
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "item": {
+                      "itemContent": {
+                        "itemType": "TimelineTweet",
+                        "tweet_results": {
+                          "result": {
+                            "rest_id": "8002",
+                            "core": {
+                              "user_results": {
+                                "result": {
+                                  "rest_id": "82",
+                                  "core": {"screen_name": "henry", "name": "Henry"}
+                                }
+                              }
+                            },
+                            "legacy": {
+                              "id_str": "8002",
+                              "created_at": "Sat Apr 18 10:10:00 +0000 2026",
+                              "full_text": "Reply from Henry",
+                              "favorite_count": 0,
+                              "retweet_count": 0,
+                              "reply_count": 0,
+                              "quote_count": 0,
+                              "lang": "en",
+                              "entities": {"hashtags": [], "user_mentions": [], "urls": []}
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

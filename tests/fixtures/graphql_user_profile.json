@@ -1,0 +1,30 @@
+{
+  "data": {
+    "user": {
+      "result": {
+        "rest_id": "100",
+        "core": {
+          "screen_name": "ivy",
+          "name": "Ivy"
+        },
+        "avatar": {"image_url": "https://pbs.twimg.com/profile_images/100/abc.jpg"},
+        "location": {"location": "Madrid"},
+        "verification": {"verified": true},
+        "privacy": {"protected": false},
+        "legacy": {
+          "id_str": "100",
+          "created_at": "Mon Jan 03 12:00:00 +0000 2022",
+          "description": "I write things",
+          "followers_count": 12345,
+          "friends_count": 123,
+          "statuses_count": 4567,
+          "listed_count": 10,
+          "pinned_tweet_ids_str": ["7000"],
+          "entities": {
+            "url": {"urls": [{"expanded_url": "https://ivy.example.com"}]}
+          }
+        }
+      }
+    }
+  }
+}

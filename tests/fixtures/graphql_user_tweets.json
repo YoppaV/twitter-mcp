@@ -1,0 +1,88 @@
+{
+  "data": {
+    "user": {
+      "result": {
+        "timeline_v2": {
+          "timeline": {
+            "instructions": [
+              {
+                "type": "TimelinePinEntry",
+                "entry": {
+                  "entryId": "tweet-7000",
+                  "content": {
+                    "entryType": "TimelineTimelineItem",
+                    "itemContent": {
+                      "itemType": "TimelineTweet",
+                      "tweet_results": {
+                        "result": {
+                          "rest_id": "7000",
+                          "core": {
+                            "user_results": {
+                              "result": {
+                                "rest_id": "70",
+                                "core": {"screen_name": "eve", "name": "Eve"}
+                              }
+                            }
+                          },
+                          "legacy": {
+                            "id_str": "7000",
+                            "created_at": "Fri Apr 17 08:00:00 +0000 2026",
+                            "full_text": "Pinned tweet",
+                            "favorite_count": 100,
+                            "retweet_count": 10,
+                            "reply_count": 1,
+                            "quote_count": 1,
+                            "lang": "en",
+                            "entities": {"hashtags": [], "user_mentions": [], "urls": []}
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "type": "TimelineAddEntries",
+                "entries": [
+                  {
+                    "entryId": "tweet-7001",
+                    "content": {
+                      "entryType": "TimelineTimelineItem",
+                      "itemContent": {
+                        "itemType": "TimelineTweet",
+                        "tweet_results": {
+                          "result": {
+                            "rest_id": "7001",
+                            "core": {
+                              "user_results": {
+                                "result": {
+                                  "rest_id": "70",
+                                  "core": {"screen_name": "eve", "name": "Eve"}
+                                }
+                              }
+                            },
+                            "legacy": {
+                              "id_str": "7001",
+                              "created_at": "Fri Apr 17 09:00:00 +0000 2026",
+                              "full_text": "Recent tweet",
+                              "favorite_count": 12,
+                              "retweet_count": 2,
+                              "reply_count": 0,
+                              "quote_count": 0,
+                              "lang": "en",
+                              "entities": {"hashtags": [], "user_mentions": [], "urls": []}
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

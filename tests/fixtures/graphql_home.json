@@ -1,0 +1,94 @@
+{
+  "data": {
+    "home": {
+      "home_timeline_urt": {
+        "instructions": [
+          {
+            "type": "TimelineAddEntries",
+            "entries": [
+              {
+                "entryId": "promotedTweet-9999",
+                "content": {
+                  "entryType": "TimelineTimelineItem",
+                  "itemContent": {"itemType": "TimelineTweet", "tweet_results": {"result": {}}}
+                }
+              },
+              {
+                "entryId": "tweet-3333",
+                "content": {
+                  "entryType": "TimelineTimelineItem",
+                  "itemContent": {
+                    "itemType": "TimelineTweet",
+                    "tweet_results": {
+                      "result": {
+                        "rest_id": "3333",
+                        "core": {
+                          "user_results": {
+                            "result": {
+                              "rest_id": "30",
+                              "core": {"screen_name": "carol", "name": "Carol"}
+                            }
+                          }
+                        },
+                        "legacy": {
+                          "id_str": "3333",
+                          "created_at": "Wed Apr 15 12:00:00 +0000 2026",
+                          "full_text": "Home tweet from Carol",
+                          "favorite_count": 2,
+                          "retweet_count": 0,
+                          "reply_count": 0,
+                          "quote_count": 0,
+                          "lang": "en",
+                          "entities": {"hashtags": [], "user_mentions": [], "urls": []}
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "entryId": "home-conversation-4444",
+                "content": {
+                  "entryType": "TimelineTimelineModule",
+                  "items": [
+                    {
+                      "item": {
+                        "itemContent": {
+                          "itemType": "TimelineTweet",
+                          "tweet_results": {
+                            "result": {
+                              "rest_id": "4444",
+                              "core": {
+                                "user_results": {
+                                  "result": {
+                                    "rest_id": "40",
+                                    "core": {"screen_name": "dave", "name": "Dave"}
+                                  }
+                                }
+                              },
+                              "legacy": {
+                                "id_str": "4444",
+                                "created_at": "Wed Apr 15 13:00:00 +0000 2026",
+                                "full_text": "Threaded reply from Dave",
+                                "favorite_count": 0,
+                                "retweet_count": 0,
+                                "reply_count": 0,
+                                "quote_count": 0,
+                                "lang": "en",
+                                "entities": {"hashtags": [], "user_mentions": [], "urls": []}
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}
