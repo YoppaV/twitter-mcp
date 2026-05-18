@@ -10,7 +10,8 @@ or DMs — to minimize the chance of getting your account flagged.
 
 ## What it gives Claude
 
-16 tools, all returning plain JSON:
+17 tools. All return plain JSON, except `download_media`, which also returns
+binary content (downloaded images, viewable inline):
 
 | Tool | What it does |
 |---|---|
@@ -30,6 +31,7 @@ or DMs — to minimize the chance of getting your account flagged.
 | `get_tweet_quotes(id_or_url, limit, mode)` | Quote-tweets of a tweet. |
 | `get_liking_users(id_or_url, limit)` | Users who liked a tweet. |
 | `get_retweeting_users(id_or_url, limit)` | Users who retweeted (excludes quotes). |
+| `download_media(id_or_url, source, indices, from_quoted, download_videos)` | Download a tweet's/article's media — photos returned inline so Claude can see them; videos/GIFs opt-in. |
 
 ## Setup
 
@@ -98,6 +100,7 @@ Claude Code and the `twitter` server is auto-discovered. Then ask things like:
 - "Search Twitter for tweets about Anthropic in the last hour."
 - "Give me the focal tweet at https://x.com/anthropicai/status/12345 plus its replies."
 - "What does @karpathy's profile look like and what are his last 20 tweets?"
+- "Download the images from https://x.com/anthropicai/status/12345 and tell me what's in them."
 
 ## Connecting Claude Desktop
 
@@ -136,18 +139,25 @@ Logs (Desktop): `~/Library/Logs/Claude/` (macOS).
 
 ```
 src/twitter_sdk/
-├── server.py          FastMCP — registers the 16 tools
+├── server.py          FastMCP — registers the 17 tools
 ├── browser.py         Async Playwright singleton + idle shutdown + asyncio.Lock
 ├── auth.py            storage_state load + session_summary + login helpers
 ├── models.py          Tweet / MediaItem / XArticle / QuotedTweet / User / Trend
 ├── parsers.py         GraphQL → dataclass extractors (pure)
 ├── scraper.py         scroll_collect() + intercept_single_response()
+├── downloader.py      pure httpx streaming download helper (no Playwright)
 └── endpoints/
     ├── _ids.py        shared handle / tweet-id / article-id parsers
     ├── bookmarks · home · tweet · search · user · article
+    ├── media          resolve_tweet_media / resolve_article_media
     ├── trends         get_trends — explore tabs
     └── social_graph   followers · following · likers · retweeters
 ```
+
+`download_media` downloads a tweet's (or article's) media: photos are saved to
+`downloads/` **and** returned inline as viewable images, so the picture itself
+enters the conversation. Videos/GIFs are opt-in (`download_videos=True`) since
+Claude can't watch them. `downloads/` is temporary scratch (gitignored).
 
 `scraper.scroll_collect` is generic over the item type — it takes
 `(url, fragment, extractor)` plus an optional `key_of` for deduplication.

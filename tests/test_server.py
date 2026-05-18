@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+import tempfile
 import unittest
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -22,10 +23,12 @@ from unittest import mock
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
+from twitter_sdk import downloader  # noqa: E402
 from twitter_sdk import server as server_mod  # noqa: E402
-from twitter_sdk.models import Article, Trend, Tweet, User  # noqa: E402
+from twitter_sdk.models import Article, MediaItem, Trend, Tweet, User  # noqa: E402
 
 FIXTURES = Path(__file__).parent / "fixtures"
+TINY_JPEG = (FIXTURES / "tiny.jpg").read_bytes()
 
 
 def _make_tweet(tid: str, text: str = "x") -> Tweet:
@@ -343,6 +346,175 @@ class GetRetweetingUsersToolTests(unittest.TestCase):
         self.assertEqual(fetch.call_args.kwargs["id_or_url"], "8000")
 
 
+def _photo(n: int = 0) -> MediaItem:
+    return MediaItem(
+        kind="photo",
+        url=f"https://pbs.twimg.com/media/{n}.jpg",
+        extension="jpg",
+    )
+
+
+def _video() -> MediaItem:
+    return MediaItem(
+        kind="video",
+        url="https://video.twimg.com/v.mp4",
+        extension="mp4",
+        duration_ms=39000,
+    )
+
+
+def _ok_outcome(
+    data: bytes = TINY_JPEG, content_type: str = "image/jpeg"
+) -> Any:
+    return downloader.FetchOutcome(
+        ok=True, data=data, content_type=content_type, reason=None
+    )
+
+
+class DownloadMediaToolTests(unittest.TestCase):
+    @staticmethod
+    def _patch_downloads_dir(tmp: str) -> mock._patch:
+        return mock.patch.object(server_mod, "_DOWNLOADS_DIR", Path(tmp))
+
+    def test_two_photos_return_images_plus_summary(self) -> None:
+        from mcp.server.fastmcp import Image
+
+        resolve = mock.AsyncMock(
+            return_value=("8000", "tweet", (_photo(0), _photo(1)))
+        )
+        with tempfile.TemporaryDirectory() as tmp, _patch_browser(), mock.patch(
+            "twitter_sdk.server.media.resolve_tweet_media", new=resolve
+        ), mock.patch(
+            "twitter_sdk.server.downloader.fetch_bytes",
+            new=mock.AsyncMock(return_value=_ok_outcome()),
+        ), self._patch_downloads_dir(tmp):
+            result = _run(server_mod.download_media(id_or_url="8000"))
+            summary = result[-1]
+            # Assert file existence while the temp dir is still alive.
+            for entry in summary["downloaded"]:
+                self.assertTrue(Path(entry["saved_path"]).exists())
+                self.assertEqual(Path(entry["saved_path"]).read_bytes(), TINY_JPEG)
+
+        self.assertEqual(len(result), 3)  # 2 inline images + 1 summary
+        self.assertTrue(all(isinstance(x, Image) for x in result[:2]))
+        self.assertEqual(summary["source_id"], "8000")
+        self.assertEqual(summary["source_kind"], "tweet")
+        self.assertEqual(len(summary["downloaded"]), 2)
+        self.assertEqual(len(summary["skipped"]), 0)
+        json.dumps(summary)
+
+    def test_photo_plus_video_opt_out_skips_video(self) -> None:
+        resolve = mock.AsyncMock(
+            return_value=("8000", "tweet", (_photo(0), _video()))
+        )
+        with tempfile.TemporaryDirectory() as tmp, _patch_browser(), mock.patch(
+            "twitter_sdk.server.media.resolve_tweet_media", new=resolve
+        ), mock.patch(
+            "twitter_sdk.server.downloader.fetch_bytes",
+            new=mock.AsyncMock(return_value=_ok_outcome()),
+        ), self._patch_downloads_dir(tmp):
+            result = _run(server_mod.download_media(id_or_url="8000"))
+
+        summary = result[-1]
+        self.assertEqual(len(summary["downloaded"]), 1)
+        self.assertEqual(len(summary["skipped"]), 1)
+        skipped = summary["skipped"][0]
+        self.assertEqual(skipped["reason"], "video_not_requested")
+        self.assertEqual(skipped["kind"], "video")
+        self.assertEqual(skipped["duration_ms"], 39000)
+
+    def test_download_videos_true_fetches_video_no_cap(self) -> None:
+        resolve = mock.AsyncMock(return_value=("8000", "tweet", (_video(),)))
+        fetch_bytes = mock.AsyncMock(
+            return_value=_ok_outcome(data=b"VIDEOBYTES", content_type="video/mp4")
+        )
+        with tempfile.TemporaryDirectory() as tmp, _patch_browser(), mock.patch(
+            "twitter_sdk.server.media.resolve_tweet_media", new=resolve
+        ), mock.patch(
+            "twitter_sdk.server.downloader.fetch_bytes", new=fetch_bytes
+        ), self._patch_downloads_dir(tmp):
+            result = _run(
+                server_mod.download_media(id_or_url="8000", download_videos=True)
+            )
+
+        self.assertEqual(len(result), 1)  # video not returned inline
+        summary = result[-1]
+        self.assertEqual(len(summary["downloaded"]), 1)
+        self.assertEqual(summary["downloaded"][0]["kind"], "video")
+        self.assertIsNone(fetch_bytes.call_args.kwargs["max_bytes"])
+
+    def test_http_404_goes_to_skipped(self) -> None:
+        resolve = mock.AsyncMock(return_value=("8000", "tweet", (_photo(0),)))
+        fail = downloader.FetchOutcome(
+            ok=False, data=None, content_type="", reason="http_404"
+        )
+        with tempfile.TemporaryDirectory() as tmp, _patch_browser(), mock.patch(
+            "twitter_sdk.server.media.resolve_tweet_media", new=resolve
+        ), mock.patch(
+            "twitter_sdk.server.downloader.fetch_bytes",
+            new=mock.AsyncMock(return_value=fail),
+        ), self._patch_downloads_dir(tmp):
+            result = _run(server_mod.download_media(id_or_url="8000"))
+
+        summary = result[-1]
+        self.assertEqual(len(summary["downloaded"]), 0)
+        self.assertEqual(summary["skipped"][0]["reason"], "http_404")
+
+    def test_from_quoted_flag_forwarded(self) -> None:
+        resolve = mock.AsyncMock(return_value=("9001", "tweet", (_photo(0),)))
+        with tempfile.TemporaryDirectory() as tmp, _patch_browser(), mock.patch(
+            "twitter_sdk.server.media.resolve_tweet_media", new=resolve
+        ), mock.patch(
+            "twitter_sdk.server.downloader.fetch_bytes",
+            new=mock.AsyncMock(return_value=_ok_outcome()),
+        ), self._patch_downloads_dir(tmp):
+            _run(server_mod.download_media(id_or_url="8000", from_quoted=True))
+        self.assertTrue(resolve.call_args.kwargs["from_quoted"])
+
+    def test_article_url_routes_to_article_resolver(self) -> None:
+        resolve = mock.AsyncMock(return_value=("123", "article", (_photo(0),)))
+        with tempfile.TemporaryDirectory() as tmp, _patch_browser(), mock.patch(
+            "twitter_sdk.server.media.resolve_article_media", new=resolve
+        ), mock.patch(
+            "twitter_sdk.server.downloader.fetch_bytes",
+            new=mock.AsyncMock(return_value=_ok_outcome()),
+        ), self._patch_downloads_dir(tmp):
+            result = _run(
+                server_mod.download_media(
+                    id_or_url="https://x.com/i/article/123"
+                )
+            )
+        summary = result[-1]
+        self.assertEqual(summary["source_kind"], "article")
+        resolve.assert_awaited_once()
+
+    def test_indices_filter_preserves_original_index(self) -> None:
+        resolve = mock.AsyncMock(
+            return_value=("8000", "tweet", (_photo(0), _photo(1), _photo(2)))
+        )
+        with tempfile.TemporaryDirectory() as tmp, _patch_browser(), mock.patch(
+            "twitter_sdk.server.media.resolve_tweet_media", new=resolve
+        ), mock.patch(
+            "twitter_sdk.server.downloader.fetch_bytes",
+            new=mock.AsyncMock(return_value=_ok_outcome()),
+        ), self._patch_downloads_dir(tmp):
+            result = _run(
+                server_mod.download_media(id_or_url="8000", indices=[0, 2])
+            )
+        summary = result[-1]
+        names = sorted(Path(d["saved_path"]).name for d in summary["downloaded"])
+        self.assertEqual(names, ["tweet_8000_00.jpg", "tweet_8000_02.jpg"])
+
+    def test_no_media_returns_only_summary(self) -> None:
+        resolve = mock.AsyncMock(return_value=("8000", "tweet", ()))
+        with tempfile.TemporaryDirectory() as tmp, _patch_browser(), mock.patch(
+            "twitter_sdk.server.media.resolve_tweet_media", new=resolve
+        ), self._patch_downloads_dir(tmp):
+            result = _run(server_mod.download_media(id_or_url="8000"))
+        self.assertEqual(len(result), 1)
+        self.assertEqual(len(result[-1]["downloaded"]), 0)
+
+
 class ToolRegistrationTests(unittest.TestCase):
     def test_all_tools_registered(self) -> None:
         tools = _run(server_mod.mcp.list_tools())
@@ -364,6 +536,7 @@ class ToolRegistrationTests(unittest.TestCase):
             "get_tweet_quotes",
             "get_liking_users",
             "get_retweeting_users",
+            "download_media",
         }
         self.assertEqual(names, expected)
 

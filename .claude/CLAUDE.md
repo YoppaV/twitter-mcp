@@ -26,22 +26,28 @@ There is no batch pipeline anymore. Claude calls the MCP tools directly.
 | `get_tweet_quotes` | Quote-tweets of a tweet. `limit`, `mode`. |
 | `get_liking_users` | Users who liked a tweet. `limit`. |
 | `get_retweeting_users` | Users who retweeted a tweet (not quote-retweets). `limit`. |
+| `download_media` | Download a tweet's/article's media to `downloads/`; photos return inline as viewable images, videos/GIFs opt-in via `download_videos`. `source`, `indices`, `from_quoted`. |
 
-All tools return plain JSON (dataclass → dict). No mutations: read-only by design.
+Most tools return plain JSON (dataclass → dict). No mutations: read-only by
+design. `download_media` is the one exception that also returns binary content:
+it yields inline `Image` objects (photos) followed by a JSON summary. Files land
+in `downloads/` — temporary scratch (gitignored).
 
 ## Architecture
 
 ```
 src/twitter_sdk/
-├── server.py          # FastMCP entrypoint, registers the 16 tools
+├── server.py          # FastMCP entrypoint, registers the 17 tools
 ├── browser.py         # Async Playwright singleton (lazy, idle timeout, asyncio.Lock)
 ├── auth.py            # storage_state load + session_summary + login helpers
-├── models.py          # Tweet, MediaItem, XArticle, QuotedTweet, User, Trend
+├── models.py          # Tweet, MediaItem, XArticle, QuotedTweet, User, Trend, Media*Result
 ├── parsers.py         # GraphQL → dataclass extractors (pure)
 ├── scraper.py         # scroll_collect() + intercept_single_response()
+├── downloader.py      # pure httpx streaming download helper (no Playwright)
 └── endpoints/
     ├── _ids.py            # shared handle / tweet-id / article-id parsers
     ├── bookmarks · home · tweet · search · user · article
+    ├── media.py           # resolve_tweet_media / resolve_article_media (for download_media)
     ├── trends.py          # get_trends — explore tabs (GenericTimelineById)
     └── social_graph.py    # followers · following · likers · retweeters
 ```

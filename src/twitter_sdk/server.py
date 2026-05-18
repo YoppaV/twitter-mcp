@@ -16,15 +16,18 @@ from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any
 
+import httpx
 from dotenv import load_dotenv
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import FastMCP, Image
 
-from .auth import SessionExpiredError, session_summary
+from . import downloader
+from .auth import USER_AGENT, SessionExpiredError, session_summary
 from .browser import DEFAULT_IDLE_TIMEOUT_S, BrowserSession
 from .endpoints import (
     article,
     bookmarks,
     home,
+    media,
     search,
     social_graph,
     trends,
@@ -32,6 +35,7 @@ from .endpoints import (
     user,
 )
 from .endpoints._ids import parse_tweet_id_or_url
+from .models import DownloadedMedia, MediaDownloadResult, MediaItem, SkippedMedia
 
 load_dotenv()
 
@@ -39,6 +43,11 @@ mcp = FastMCP("twitter-sdk")
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _DEFAULT_SESSION_DIR = _PROJECT_ROOT / "sessions"
+
+# Where ``download_media`` writes fetched media. Treated as temporary scratch
+# (gitignored). A future ``TWITTER_DOWNLOADS_DIR`` env var would plug in here —
+# this single constant is the only place that would need to change.
+_DOWNLOADS_DIR = _PROJECT_ROOT / "downloads"
 
 
 def _resolve_session_path() -> Path:
@@ -79,6 +88,24 @@ _browser = BrowserSession(
     headless=_headless(),
 )
 
+_http_client: httpx.AsyncClient | None = None
+
+
+def _get_http_client() -> httpx.AsyncClient:
+    """Lazily build the shared AsyncClient used for media downloads.
+
+    Created on first use so merely importing this module (e.g. in tests)
+    never opens a client. Reused across calls — httpx pools connections.
+    """
+    global _http_client
+    if _http_client is None:
+        _http_client = httpx.AsyncClient(
+            follow_redirects=True,
+            timeout=httpx.Timeout(30.0),
+            headers={"User-Agent": USER_AGENT},
+        )
+    return _http_client
+
 
 def _serialize(value: Any) -> Any:
     if is_dataclass(value) and not isinstance(value, type):
@@ -90,6 +117,40 @@ def _serialize(value: Any) -> Any:
     if isinstance(value, dict):
         return {k: _serialize(v) for k, v in value.items()}
     return value
+
+
+def _detect_source(id_or_url: str, source: str) -> str:
+    """Resolve the ``source`` arg of ``download_media`` to "tweet" or "article".
+
+    ``auto`` (the default) inspects the URL: ``/i/article/`` ⇒ article,
+    a ``/status/`` URL or a bare numeric id ⇒ tweet.
+    """
+    chosen = (source or "auto").strip().lower()
+    if chosen in ("tweet", "article"):
+        return chosen
+    if chosen != "auto":
+        raise ValueError(
+            f"Invalid source {source!r}. Use 'auto', 'tweet', or 'article'."
+        )
+    if "/i/article/" in id_or_url.lower():
+        return "article"
+    return "tweet"
+
+
+def _select_indices(
+    items: tuple[MediaItem, ...],
+    indices: list[int] | None,
+) -> list[tuple[int, MediaItem]]:
+    """Pair each media item with its original 0-based index.
+
+    When ``indices`` is given, keep only those positions. The original index
+    is retained so saved filenames stay stable regardless of the filter.
+    """
+    enumerated = list(enumerate(items))
+    if indices is None:
+        return enumerated
+    wanted = set(indices)
+    return [(i, item) for i, item in enumerated if i in wanted]
 
 
 @mcp.tool()
@@ -219,9 +280,11 @@ async def get_x_article(id_or_url: str) -> dict[str, Any] | None:
             full https://x.com/i/article/<id> URL.
 
     Returns:
-        ``{article_id, url, title, body_text, body_html, char_count}`` or
-        ``None`` if the article failed to render (deleted, restricted, or the
-        reader view didn't appear within ~8 seconds).
+        ``{article_id, url, title, body_text, body_html, char_count, media}``
+        or ``None`` if the article failed to render (deleted, restricted, or
+        the reader view didn't appear within ~8 seconds). ``media`` lists
+        photos/videos scraped from the reader DOM (best-effort, may be empty) —
+        pass the article to ``download_media`` to fetch those bytes.
     """
     async with _browser.page() as page:
         result = await article.fetch(page, id_or_url=id_or_url)
@@ -404,6 +467,125 @@ async def get_retweeting_users(
             page, id_or_url=id_or_url, limit=limit
         )
     return _serialize(result)
+
+
+@mcp.tool(structured_output=False)
+async def download_media(
+    id_or_url: str,
+    source: str = "auto",
+    indices: list[int] | None = None,
+    from_quoted: bool = False,
+    download_videos: bool = False,
+) -> list[Any]:
+    """Download a tweet's (or article's) media so Claude can actually see it.
+
+    Every other tool returns JSON only — for a tweet with a photo or video you
+    get the URL and metadata, but never the pixels. This tool fetches the bytes:
+
+    - **Photos** are downloaded, saved under ``downloads/``, AND returned
+      inline so they enter the conversation as viewable images.
+    - **Videos / GIFs** are NOT fetched unless ``download_videos=True`` — they
+      can be large and Claude cannot watch them anyway. Otherwise they appear
+      in the result's ``skipped`` list with their URL + duration.
+
+    Works for the focal tweet, a quoted/reposted tweet (``from_quoted=True``),
+    and native X articles (media scraped from the reader DOM).
+
+    Args:
+        id_or_url: A tweet id/URL, or an X article id/URL.
+        source: "auto" (detect from the URL), "tweet", or "article". Only
+            needed to disambiguate a bare numeric id.
+        indices: 0-based positions of the media items to download. None = all.
+        from_quoted: Download the quoted/reposted tweet's media instead of the
+            focal tweet's own media.
+        download_videos: Opt in to downloading videos/GIFs. When set there is
+            no size cap — the opt-in is the only gate.
+
+    Returns:
+        A list of inline images (photos) followed by one JSON summary:
+        ``{source_id, source_kind, downloaded:[...], skipped:[...]}``. Saved
+        files live under ``downloads/`` (temporary scratch).
+    """
+    detected = _detect_source(id_or_url, source)
+
+    async with _browser.page() as page:
+        if detected == "article":
+            source_id, source_kind, items = await media.resolve_article_media(
+                page, id_or_url=id_or_url
+            )
+        else:
+            source_id, source_kind, items = await media.resolve_tweet_media(
+                page, id_or_url=id_or_url, from_quoted=from_quoted
+            )
+
+    selected = _select_indices(items, indices)
+
+    _DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    client = _get_http_client()
+
+    images: list[Image] = []
+    downloaded: list[DownloadedMedia] = []
+    skipped: list[SkippedMedia] = []
+
+    for index, item in selected:
+        is_photo = item.kind == "photo"
+
+        # Videos/GIFs are opt-in only — never auto-downloaded.
+        if not is_photo and not download_videos:
+            skipped.append(
+                SkippedMedia(
+                    kind=item.kind,
+                    source_url=item.url,
+                    reason="video_not_requested",
+                    duration_ms=item.duration_ms,
+                )
+            )
+            continue
+
+        # Images get a safety-net cap; opted-in videos get none (user's call).
+        max_bytes = downloader.IMAGE_MAX_BYTES if is_photo else None
+        outcome = await downloader.fetch_bytes(
+            client, item.url, max_bytes=max_bytes
+        )
+
+        if not outcome.ok or outcome.data is None:
+            skipped.append(
+                SkippedMedia(
+                    kind=item.kind,
+                    source_url=item.url,
+                    reason=outcome.reason or downloader.REASON_DOWNLOAD_ERROR,
+                    duration_ms=item.duration_ms,
+                )
+            )
+            continue
+
+        fmt = downloader.content_type_to_format(
+            outcome.content_type, item.extension
+        )
+        ext = downloader.format_to_extension(fmt)
+        path = _DOWNLOADS_DIR / f"{source_kind}_{source_id}_{index:02d}.{ext}"
+        path.write_bytes(outcome.data)
+
+        downloaded.append(
+            DownloadedMedia(
+                kind=item.kind,
+                source_url=item.url,
+                saved_path=str(path),
+                byte_size=len(outcome.data),
+                content_type=outcome.content_type,
+            )
+        )
+        # Only photos go back inline — Claude can view images, not video bytes.
+        if is_photo:
+            images.append(Image(data=outcome.data, format=fmt))
+
+    result = MediaDownloadResult(
+        source_id=source_id,
+        source_kind=source_kind,
+        downloaded=tuple(downloaded),
+        skipped=tuple(skipped),
+    )
+    return [*images, _serialize(result)]
 
 
 def main() -> None:

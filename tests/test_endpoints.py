@@ -26,11 +26,18 @@ from twitter_sdk.endpoints import (  # noqa: E402
     article,
     bookmarks,
     home,
+    media,
     search,
     social_graph,
     trends,
     tweet,
     user,
+)
+from twitter_sdk.models import (  # noqa: E402
+    Article,
+    MediaItem,
+    QuotedTweet,
+    Tweet,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -481,12 +488,16 @@ class ArticlePage:
         body_html: str = "<html>body</html>",
         title: str = "Article Title",
         selector_found: bool = True,
+        media_elements: list[dict[str, Any]] | None = None,
+        media_raises: bool = False,
     ) -> None:
         self.url = url
         self._body_text = body_text
         self._body_html = body_html
         self._title = title
         self._selector_found = selector_found
+        self._media_elements = media_elements or []
+        self._media_raises = media_raises
         self.goto_calls: list[str] = []
 
     async def goto(self, url: str, **_: Any) -> None:
@@ -504,6 +515,11 @@ class ArticlePage:
 
     async def content(self) -> str:
         return self._body_html
+
+    async def eval_on_selector_all(self, selector: str, expression: str) -> Any:
+        if self._media_raises:
+            raise RuntimeError("eval failed")
+        return self._media_elements
 
 
 class ArticleEndpointTests(unittest.TestCase):
@@ -542,6 +558,154 @@ class ArticleEndpointTests(unittest.TestCase):
         page = ArticlePage(selector_found=False)
         result = _run(article.fetch(page, id_or_url="123"))
         self.assertIsNone(result)
+
+    def test_extracts_downloadable_article_media(self) -> None:
+        page = ArticlePage(
+            media_elements=[
+                {"tag": "img", "src": "https://pbs.twimg.com/media/a.jpg"},
+                {"tag": "video", "src": "https://video.twimg.com/v.mp4"},
+                {"tag": "img", "src": "blob:https://x.com/preview"},  # filtered
+                {"tag": "img", "src": "https://pbs.twimg.com/media/a.jpg"},  # dup
+            ]
+        )
+        result = _run(article.fetch(page, id_or_url="123"))
+        assert result is not None
+        self.assertEqual([m.kind for m in result.media], ["photo", "video"])
+        self.assertEqual(result.media[0].url, "https://pbs.twimg.com/media/a.jpg")
+        self.assertEqual(result.media[1].url, "https://video.twimg.com/v.mp4")
+
+    def test_article_media_extraction_failure_yields_empty(self) -> None:
+        page = ArticlePage(media_raises=True)
+        result = _run(article.fetch(page, id_or_url="123"))
+        assert result is not None
+        self.assertEqual(result.media, ())
+
+
+def _media_item(kind: str = "photo") -> MediaItem:
+    if kind == "photo":
+        return MediaItem(
+            kind="photo",
+            url="https://pbs.twimg.com/media/a.jpg",
+            extension="jpg",
+        )
+    return MediaItem(
+        kind="video",
+        url="https://video.twimg.com/v.mp4",
+        extension="mp4",
+        duration_ms=39000,
+    )
+
+
+def _tweet_with(
+    tweet_id: str,
+    *,
+    media: tuple[MediaItem, ...] = (),
+    quoted: QuotedTweet | None = None,
+) -> Tweet:
+    return Tweet(
+        tweet_id=tweet_id,
+        created_at="2026-01-01T00:00:00+00:00",
+        author_handle="frank",
+        author_name="Frank",
+        author_id="1",
+        text="t",
+        is_long_form=False,
+        likes=0,
+        retweets=0,
+        replies=0,
+        quote_count=0,
+        lang="en",
+        hashtags=(),
+        mentions=(),
+        urls=(),
+        media=media,
+        x_article=None,
+        quoted=quoted,
+    )
+
+
+def _quoted_stub(tweet_id: str) -> QuotedTweet:
+    return QuotedTweet(
+        tweet_id=tweet_id,
+        author_handle="bob",
+        author_name="Bob",
+        text="quoted",
+        urls=(),
+        x_article=None,
+    )
+
+
+class MediaEndpointTests(unittest.TestCase):
+    def test_resolve_tweet_media_returns_focal_media(self) -> None:
+        focal = _tweet_with("8000", media=(_media_item("photo"), _media_item("video")))
+        with mock.patch.object(
+            tweet, "fetch", new=mock.AsyncMock(return_value=(focal, []))
+        ):
+            sid, kind, items = _run(
+                media.resolve_tweet_media(object(), id_or_url="8000")
+            )
+        self.assertEqual((sid, kind), ("8000", "tweet"))
+        self.assertEqual([m.kind for m in items], ["photo", "video"])
+
+    def test_resolve_tweet_media_from_quoted_refetches(self) -> None:
+        focal = _tweet_with("8000", media=(), quoted=_quoted_stub("9001"))
+        quoted_full = _tweet_with("9001", media=(_media_item("photo"),))
+        fetch = mock.AsyncMock(side_effect=[(focal, []), (quoted_full, [])])
+        with mock.patch.object(tweet, "fetch", new=fetch):
+            sid, kind, items = _run(
+                media.resolve_tweet_media(
+                    object(), id_or_url="8000", from_quoted=True
+                )
+            )
+        self.assertEqual((sid, kind), ("9001", "tweet"))
+        self.assertEqual(len(items), 1)
+        self.assertEqual(fetch.call_count, 2)
+        self.assertEqual(fetch.call_args_list[1].kwargs["id_or_url"], "9001")
+
+    def test_resolve_tweet_media_from_quoted_without_quote_raises(self) -> None:
+        focal = _tweet_with("8000", media=(), quoted=None)
+        with mock.patch.object(
+            tweet, "fetch", new=mock.AsyncMock(return_value=(focal, []))
+        ):
+            with self.assertRaises(ValueError):
+                _run(
+                    media.resolve_tweet_media(
+                        object(), id_or_url="8000", from_quoted=True
+                    )
+                )
+
+    def test_resolve_tweet_media_deleted_tweet_raises(self) -> None:
+        with mock.patch.object(
+            tweet, "fetch", new=mock.AsyncMock(return_value=(None, []))
+        ):
+            with self.assertRaises(ValueError):
+                _run(media.resolve_tweet_media(object(), id_or_url="8000"))
+
+    def test_resolve_article_media_returns_media(self) -> None:
+        art = Article(
+            article_id="123",
+            url="https://x.com/i/article/123",
+            title="t",
+            body_text="b",
+            body_html="h",
+            char_count=1,
+            media=(_media_item("photo"),),
+        )
+        with mock.patch.object(
+            article, "fetch", new=mock.AsyncMock(return_value=art)
+        ):
+            sid, kind, items = _run(
+                media.resolve_article_media(object(), id_or_url="123")
+            )
+        self.assertEqual((sid, kind), ("123", "article"))
+        self.assertEqual(len(items), 1)
+
+    def test_resolve_article_media_unrendered_raises(self) -> None:
+        with mock.patch.object(
+            article, "fetch", new=mock.AsyncMock(return_value=None)
+        ):
+            with self.assertRaises(ValueError):
+                _run(media.resolve_article_media(object(), id_or_url="123"))
 
 
 if __name__ == "__main__":

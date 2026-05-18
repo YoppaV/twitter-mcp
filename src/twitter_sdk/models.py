@@ -67,6 +67,9 @@ class Article:
 
     ``XArticle`` (in a Tweet) carries only the preview metadata. Use the
     ``get_x_article`` tool to fetch the rendered body text + HTML.
+
+    ``media`` holds the photos/videos extracted from the rendered reader DOM —
+    best-effort (X has no GraphQL backing for article bodies), may be empty.
     """
 
     article_id: str
@@ -75,6 +78,44 @@ class Article:
     body_text: str
     body_html: str
     char_count: int
+    media: tuple[MediaItem, ...] = ()
+
+
+@dataclass(frozen=True)
+class DownloadedMedia:
+    """A media item the ``download_media`` tool fetched and saved to disk."""
+
+    kind: str  # "photo" | "video" | "gif"
+    source_url: str
+    saved_path: str
+    byte_size: int
+    content_type: str
+
+
+@dataclass(frozen=True)
+class SkippedMedia:
+    """A media item ``download_media`` did NOT save, with the reason why.
+
+    ``reason`` is one of: ``video_not_requested`` (a video/GIF was found but
+    ``download_videos`` was False), ``too_large``, ``http_404``, ``deleted``,
+    ``download_error``, ``unsupported``.
+    """
+
+    kind: str  # "photo" | "video" | "gif"
+    source_url: str
+    reason: str
+    duration_ms: int | None = None
+    byte_size: int | None = None
+
+
+@dataclass(frozen=True)
+class MediaDownloadResult:
+    """Summary payload returned (alongside inline images) by ``download_media``."""
+
+    source_id: str
+    source_kind: str  # "tweet" | "article"
+    downloaded: tuple[DownloadedMedia, ...]
+    skipped: tuple[SkippedMedia, ...]
 
 
 @dataclass(frozen=True)

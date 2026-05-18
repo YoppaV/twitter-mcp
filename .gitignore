@@ -11,6 +11,9 @@ sessions/
 # Downloaded content and derived data
 data/
 
+# Media fetched by the download_media tool (temporary scratch)
+downloads/
+
 # Python
 __pycache__/
 *.py[cod]
