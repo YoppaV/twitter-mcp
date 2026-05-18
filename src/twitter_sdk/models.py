@@ -66,10 +66,15 @@ class Article:
     """Full body of an X native article (x.com/i/article/...).
 
     ``XArticle`` (in a Tweet) carries only the preview metadata. Use the
-    ``get_x_article`` tool to fetch the rendered body text + HTML.
+    ``get_x_article`` tool to fetch the rendered body.
 
     ``media`` holds the photos/videos extracted from the rendered reader DOM —
     best-effort (X has no GraphQL backing for article bodies), may be empty.
+    ``body_markdown`` / ``body_html`` re-render the article as Markdown / a
+    standalone HTML document, with images inlined at their original positions
+    (image URLs are the remote CDN URLs; ``download_media`` rewrites them to
+    local files when it saves the article to disk). ``body_text`` is the plain
+    reader text.
     """
 
     article_id: str
@@ -79,6 +84,7 @@ class Article:
     body_html: str
     char_count: int
     media: tuple[MediaItem, ...] = ()
+    body_markdown: str = ""
 
 
 @dataclass(frozen=True)
@@ -110,12 +116,19 @@ class SkippedMedia:
 
 @dataclass(frozen=True)
 class MediaDownloadResult:
-    """Summary payload returned (alongside inline images) by ``download_media``."""
+    """Summary payload returned (alongside inline images) by ``download_media``.
+
+    ``markdown_path`` / ``html_path`` are set only for articles — the paths of
+    the ``.md`` and ``.html`` files the tool wrote (article body + images
+    inlined, both with local image references). ``None`` for tweets.
+    """
 
     source_id: str
     source_kind: str  # "tweet" | "article"
     downloaded: tuple[DownloadedMedia, ...]
     skipped: tuple[SkippedMedia, ...]
+    markdown_path: str | None = None
+    html_path: str | None = None
 
 
 @dataclass(frozen=True)

@@ -280,11 +280,13 @@ async def get_x_article(id_or_url: str) -> dict[str, Any] | None:
             full https://x.com/i/article/<id> URL.
 
     Returns:
-        ``{article_id, url, title, body_text, body_html, char_count, media}``
-        or ``None`` if the article failed to render (deleted, restricted, or
-        the reader view didn't appear within ~8 seconds). ``media`` lists
-        photos/videos scraped from the reader DOM (best-effort, may be empty) —
-        pass the article to ``download_media`` to fetch those bytes.
+        ``{article_id, url, title, body_text, body_html, char_count, media,
+        body_markdown}`` or ``None`` if the article failed to render (deleted,
+        restricted, or the reader view didn't appear within ~8 seconds).
+        ``media`` lists photos/videos scraped from the reader DOM (best-effort,
+        may be empty); ``body_markdown`` and ``body_html`` re-render the body
+        as Markdown / a standalone HTML document with images inlined. Pass the
+        article to ``download_media`` to fetch those bytes and save the files.
     """
     async with _browser.page() as page:
         result = await article.fetch(page, id_or_url=id_or_url)
@@ -489,7 +491,10 @@ async def download_media(
       in the result's ``skipped`` list with their URL + duration.
 
     Works for the focal tweet, a quoted/reposted tweet (``from_quoted=True``),
-    and native X articles (media scraped from the reader DOM).
+    and native X articles. For an article the body is additionally saved as
+    ``downloads/article_<id>.md`` and ``downloads/article_<id>.html`` — the
+    article re-rendered with the downloaded images inlined in their original
+    positions, so it can be read offline.
 
     Args:
         id_or_url: A tweet id/URL, or an X article id/URL.
@@ -503,16 +508,21 @@ async def download_media(
 
     Returns:
         A list of inline images (photos) followed by one JSON summary:
-        ``{source_id, source_kind, downloaded:[...], skipped:[...]}``. Saved
-        files live under ``downloads/`` (temporary scratch).
+        ``{source_id, source_kind, downloaded:[...], skipped:[...],
+        markdown_path, html_path}``. ``markdown_path`` / ``html_path`` are the
+        saved article files (else null for tweets). Saved files live under
+        ``downloads/`` (temporary scratch).
     """
     detected = _detect_source(id_or_url, source)
+    article_markdown: str | None = None
+    article_html: str | None = None
 
     async with _browser.page() as page:
         if detected == "article":
-            source_id, source_kind, items = await media.resolve_article_media(
-                page, id_or_url=id_or_url
-            )
+            art = await media.resolve_article_media(page, id_or_url=id_or_url)
+            source_id, source_kind, items = art.article_id, "article", art.media
+            article_markdown = art.body_markdown
+            article_html = art.body_html
         else:
             source_id, source_kind, items = await media.resolve_tweet_media(
                 page, id_or_url=id_or_url, from_quoted=from_quoted
@@ -579,13 +589,44 @@ async def download_media(
         if is_photo:
             images.append(Image(data=outcome.data, format=fmt))
 
+    # For articles, also save the body as Markdown and as a standalone HTML
+    # document, both with images inlined — each downloaded media's remote URL
+    # is rewritten to its local filename (relative: the files sit in
+    # downloads/ next to the images).
+    markdown_path: str | None = None
+    html_path: str | None = None
+    if article_markdown is not None:
+        markdown_path = _write_article_file(
+            source_id, "md", article_markdown, downloaded
+        )
+    if article_html is not None:
+        html_path = _write_article_file(
+            source_id, "html", article_html, downloaded
+        )
+
     result = MediaDownloadResult(
         source_id=source_id,
         source_kind=source_kind,
         downloaded=tuple(downloaded),
         skipped=tuple(skipped),
+        markdown_path=markdown_path,
+        html_path=html_path,
     )
     return [*images, _serialize(result)]
+
+
+def _write_article_file(
+    source_id: str,
+    extension: str,
+    rendered: str,
+    downloaded: list[DownloadedMedia],
+) -> str:
+    """Rewrite remote image URLs to local filenames, write the file, return path."""
+    for entry in downloaded:
+        rendered = rendered.replace(entry.source_url, Path(entry.saved_path).name)
+    path = _DOWNLOADS_DIR / f"article_{source_id}.{extension}"
+    path.write_text(rendered, encoding="utf-8")
+    return str(path)
 
 
 def main() -> None:

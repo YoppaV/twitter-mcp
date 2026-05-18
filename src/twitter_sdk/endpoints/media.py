@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ..models import MediaItem
+from ..models import Article, MediaItem
 from . import article, tweet
 
 if TYPE_CHECKING:
@@ -65,11 +65,13 @@ async def resolve_tweet_media(
     return quoted.tweet_id, "tweet", quoted.media
 
 
-async def resolve_article_media(page: "Page", *, id_or_url: str) -> Resolved:
-    """Resolve media for a native X article via its rendered reader DOM.
+async def resolve_article_media(page: "Page", *, id_or_url: str) -> Article:
+    """Fetch a native X article (body + media) via its rendered reader DOM.
 
-    Raises ``ValueError`` if the article didn't render (deleted, restricted,
-    or the reader view never appeared).
+    Returns the full ``Article`` — unlike ``resolve_tweet_media``, the caller
+    needs the body too (``download_media`` saves it as Markdown). Raises
+    ``ValueError`` if the article didn't render (deleted, restricted, or the
+    reader view never appeared).
     """
     result = await article.fetch(page, id_or_url=id_or_url)
     if result is None:
@@ -77,4 +79,4 @@ async def resolve_article_media(page: "Page", *, id_or_url: str) -> Resolved:
             f"Article {id_or_url!r} could not be loaded — it may be deleted, "
             "restricted, or the reader view didn't render."
         )
-    return result.article_id, "article", result.media
+    return result

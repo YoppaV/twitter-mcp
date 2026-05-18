@@ -485,19 +485,19 @@ class ArticlePage:
         *,
         url: str = "https://x.com/i/article/123",
         body_text: str = "Article body",
-        body_html: str = "<html>body</html>",
         title: str = "Article Title",
         selector_found: bool = True,
-        media_elements: list[dict[str, Any]] | None = None,
-        media_raises: bool = False,
+        blocks: list[dict[str, Any]] | None = None,
+        cover_src: str = "",
+        blocks_raise: bool = False,
     ) -> None:
         self.url = url
         self._body_text = body_text
-        self._body_html = body_html
         self._title = title
         self._selector_found = selector_found
-        self._media_elements = media_elements or []
-        self._media_raises = media_raises
+        self._blocks = blocks or []
+        self._cover_src = cover_src
+        self._blocks_raise = blocks_raise
         self.goto_calls: list[str] = []
 
     async def goto(self, url: str, **_: Any) -> None:
@@ -513,21 +513,25 @@ class ArticlePage:
             return self._title
         return self._body_text
 
-    async def content(self) -> str:
-        return self._body_html
-
-    async def eval_on_selector_all(self, selector: str, expression: str) -> Any:
-        if self._media_raises:
-            raise RuntimeError("eval failed")
-        return self._media_elements
+    async def evaluate(self, script: str) -> Any:
+        if self._blocks_raise:
+            raise RuntimeError("evaluate failed")
+        return {
+            "title": self._title,
+            "coverSrc": self._cover_src,
+            "blocks": self._blocks,
+        }
 
 
 class ArticleEndpointTests(unittest.TestCase):
     def test_returns_full_article(self) -> None:
         page = ArticlePage(
             body_text="Hello article",
-            body_html="<article>Hello</article>",
             title="My Title",
+            blocks=[
+                {"type": "text", "tag": "P", "text": "Hello article",
+                 "fs": 17, "html": "Hello article"},
+            ],
         )
         result = _run(article.fetch(page, id_or_url="1846123456789012345"))
         assert result is not None
@@ -535,8 +539,11 @@ class ArticleEndpointTests(unittest.TestCase):
         self.assertEqual(result.url, "https://x.com/i/article/1846123456789012345")
         self.assertEqual(result.title, "My Title")
         self.assertEqual(result.body_text, "Hello article")
-        self.assertEqual(result.body_html, "<article>Hello</article>")
         self.assertEqual(result.char_count, len("Hello article"))
+        # body_html is now a standalone rendered HTML document
+        self.assertIn("<!DOCTYPE html>", result.body_html)
+        self.assertIn("<h1>My Title</h1>", result.body_html)
+        self.assertIn("<p>Hello article</p>", result.body_html)
 
     def test_url_input_extracts_id(self) -> None:
         page = ArticlePage()
@@ -559,26 +566,68 @@ class ArticleEndpointTests(unittest.TestCase):
         result = _run(article.fetch(page, id_or_url="123"))
         self.assertIsNone(result)
 
-    def test_extracts_downloadable_article_media(self) -> None:
+    def test_extracts_article_media_and_renders_markdown(self) -> None:
         page = ArticlePage(
-            media_elements=[
-                {"tag": "img", "src": "https://pbs.twimg.com/media/a.jpg"},
-                {"tag": "video", "src": "https://video.twimg.com/v.mp4"},
-                {"tag": "img", "src": "blob:https://x.com/preview"},  # filtered
-                {"tag": "img", "src": "https://pbs.twimg.com/media/a.jpg"},  # dup
-            ]
+            title="My Article",
+            cover_src="https://pbs.twimg.com/media/cover.jpg",
+            blocks=[
+                {"type": "text", "tag": "P", "text": "Intro paragraph.",
+                 "fs": 17,
+                 "html": 'Intro <span style="font-weight: bold;">paragraph</span>.'},
+                {"type": "image", "src": "https://pbs.twimg.com/media/a.jpg"},
+                # X renders headings as oversized divs, not <h*> tags:
+                {"type": "text", "tag": "DIV", "text": "A Section", "fs": 26,
+                 "html": "A Section"},
+                {"type": "image", "src": "blob:https://x.com/preview"},  # filtered
+                {"type": "image",  # avatar — filtered
+                 "src": "https://pbs.twimg.com/profile_images/9/x.jpg"},
+                {"type": "image", "src": "https://pbs.twimg.com/media/a.jpg"},  # dup
+            ],
         )
         result = _run(article.fetch(page, id_or_url="123"))
         assert result is not None
-        self.assertEqual([m.kind for m in result.media], ["photo", "video"])
-        self.assertEqual(result.media[0].url, "https://pbs.twimg.com/media/a.jpg")
-        self.assertEqual(result.media[1].url, "https://video.twimg.com/v.mp4")
+        # cover first, then the unique body image; avatar/blob/dup dropped
+        self.assertEqual(
+            [m.url for m in result.media],
+            [
+                "https://pbs.twimg.com/media/cover.jpg",
+                "https://pbs.twimg.com/media/a.jpg",
+            ],
+        )
+        md = result.body_markdown
+        self.assertIn("# My Article", md)
+        self.assertIn("![cover](https://pbs.twimg.com/media/cover.jpg)", md)
+        self.assertIn("Intro paragraph.", md)
+        self.assertIn("## A Section", md)
+        self.assertIn("![image](https://pbs.twimg.com/media/a.jpg)", md)
+        self.assertNotIn("profile_images", md)
+        self.assertNotIn("blob:", md)
+        # paragraph precedes the image, image precedes the heading (order kept)
+        self.assertLess(md.index("Intro paragraph."), md.index("media/a.jpg"))
+        self.assertLess(md.index("media/a.jpg"), md.index("## A Section"))
 
-    def test_article_media_extraction_failure_yields_empty(self) -> None:
-        page = ArticlePage(media_raises=True)
+        html = result.body_html
+        self.assertIn("<!DOCTYPE html>", html)
+        self.assertIn("<h1>My Article</h1>", html)
+        self.assertIn("<h2>A Section</h2>", html)
+        self.assertIn(
+            '<img src="https://pbs.twimg.com/media/cover.jpg" alt="cover">', html
+        )
+        self.assertIn(
+            '<img src="https://pbs.twimg.com/media/a.jpg" alt="image">', html
+        )
+        # inline bold survives via the leaf's own innerHTML
+        self.assertIn('<span style="font-weight: bold;">paragraph</span>', html)
+        self.assertNotIn("profile_images", html)
+        self.assertNotIn("blob:", html)
+
+    def test_article_block_extraction_failure_falls_back_to_body_text(self) -> None:
+        page = ArticlePage(blocks_raise=True, body_text="Plain fallback body")
         result = _run(article.fetch(page, id_or_url="123"))
         assert result is not None
         self.assertEqual(result.media, ())
+        self.assertIn("Plain fallback body", result.body_markdown)
+        self.assertIn("Plain fallback body", result.body_html)
 
 
 def _media_item(kind: str = "photo") -> MediaItem:
@@ -681,7 +730,7 @@ class MediaEndpointTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 _run(media.resolve_tweet_media(object(), id_or_url="8000"))
 
-    def test_resolve_article_media_returns_media(self) -> None:
+    def test_resolve_article_media_returns_article(self) -> None:
         art = Article(
             article_id="123",
             url="https://x.com/i/article/123",
@@ -690,15 +739,15 @@ class MediaEndpointTests(unittest.TestCase):
             body_html="h",
             char_count=1,
             media=(_media_item("photo"),),
+            body_markdown="# t\n\n![image](https://pbs.twimg.com/media/a.jpg)\n",
         )
         with mock.patch.object(
             article, "fetch", new=mock.AsyncMock(return_value=art)
         ):
-            sid, kind, items = _run(
-                media.resolve_article_media(object(), id_or_url="123")
-            )
-        self.assertEqual((sid, kind), ("123", "article"))
-        self.assertEqual(len(items), 1)
+            result = _run(media.resolve_article_media(object(), id_or_url="123"))
+        self.assertIs(result, art)
+        self.assertEqual(result.article_id, "123")
+        self.assertEqual(len(result.media), 1)
 
     def test_resolve_article_media_unrendered_raises(self) -> None:
         with mock.patch.object(

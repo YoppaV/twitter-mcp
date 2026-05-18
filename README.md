@@ -31,7 +31,7 @@ binary content (downloaded images, viewable inline):
 | `get_tweet_quotes(id_or_url, limit, mode)` | Quote-tweets of a tweet. |
 | `get_liking_users(id_or_url, limit)` | Users who liked a tweet. |
 | `get_retweeting_users(id_or_url, limit)` | Users who retweeted (excludes quotes). |
-| `download_media(id_or_url, source, indices, from_quoted, download_videos)` | Download a tweet's/article's media — photos returned inline so Claude can see them; videos/GIFs opt-in. |
+| `download_media(id_or_url, source, indices, from_quoted, download_videos)` | Download a tweet's/article's media — photos returned inline so Claude can see them; videos/GIFs opt-in. Articles also saved as Markdown + HTML with images inlined. |
 
 ## Setup
 
@@ -157,7 +157,10 @@ src/twitter_sdk/
 `download_media` downloads a tweet's (or article's) media: photos are saved to
 `downloads/` **and** returned inline as viewable images, so the picture itself
 enters the conversation. Videos/GIFs are opt-in (`download_videos=True`) since
-Claude can't watch them. `downloads/` is temporary scratch (gitignored).
+Claude can't watch them. For a native X article it also writes
+`downloads/article_<id>.md` and `downloads/article_<id>.html` — the article
+re-rendered (headings, text, downloaded images inlined where they appear),
+readable offline. `downloads/` is temporary scratch (gitignored).
 
 `scraper.scroll_collect` is generic over the item type — it takes
 `(url, fragment, extractor)` plus an optional `key_of` for deduplication.

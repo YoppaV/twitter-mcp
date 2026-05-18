@@ -26,12 +26,15 @@ There is no batch pipeline anymore. Claude calls the MCP tools directly.
 | `get_tweet_quotes` | Quote-tweets of a tweet. `limit`, `mode`. |
 | `get_liking_users` | Users who liked a tweet. `limit`. |
 | `get_retweeting_users` | Users who retweeted a tweet (not quote-retweets). `limit`. |
-| `download_media` | Download a tweet's/article's media to `downloads/`; photos return inline as viewable images, videos/GIFs opt-in via `download_videos`. `source`, `indices`, `from_quoted`. |
+| `download_media` | Download a tweet's/article's media to `downloads/`; photos return inline as viewable images, videos/GIFs opt-in via `download_videos`. For an article, also writes `downloads/article_<id>.md` + `.html` (body + images inlined). `source`, `indices`, `from_quoted`. |
 
 Most tools return plain JSON (dataclass → dict). No mutations: read-only by
 design. `download_media` is the one exception that also returns binary content:
 it yields inline `Image` objects (photos) followed by a JSON summary. Files land
-in `downloads/` — temporary scratch (gitignored).
+in `downloads/` — temporary scratch (gitignored). For articles it additionally
+saves the body re-rendered from the reader DOM as Markdown and as a standalone
+HTML document (`article_<id>.md` / `.html`), with images inlined in position,
+so the article reads offline.
 
 ## Architecture
 

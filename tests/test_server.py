@@ -471,8 +471,26 @@ class DownloadMediaToolTests(unittest.TestCase):
             _run(server_mod.download_media(id_or_url="8000", from_quoted=True))
         self.assertTrue(resolve.call_args.kwargs["from_quoted"])
 
-    def test_article_url_routes_to_article_resolver(self) -> None:
-        resolve = mock.AsyncMock(return_value=("123", "article", (_photo(0),)))
+    def test_article_url_writes_markdown_and_html(self) -> None:
+        art = Article(
+            article_id="123",
+            url="https://x.com/i/article/123",
+            title="My Article",
+            body_text="body",
+            body_html=(
+                "<!DOCTYPE html>\n<html><body><article>\n"
+                "<h1>My Article</h1>\n"
+                '<img src="https://pbs.twimg.com/media/0.jpg" alt="image">\n'
+                "</article></body></html>\n"
+            ),
+            char_count=4,
+            media=(_photo(0),),
+            body_markdown=(
+                "# My Article\n\nIntro.\n\n"
+                "![image](https://pbs.twimg.com/media/0.jpg)\n"
+            ),
+        )
+        resolve = mock.AsyncMock(return_value=art)
         with tempfile.TemporaryDirectory() as tmp, _patch_browser(), mock.patch(
             "twitter_sdk.server.media.resolve_article_media", new=resolve
         ), mock.patch(
@@ -484,8 +502,17 @@ class DownloadMediaToolTests(unittest.TestCase):
                     id_or_url="https://x.com/i/article/123"
                 )
             )
-        summary = result[-1]
-        self.assertEqual(summary["source_kind"], "article")
+            summary = result[-1]
+            self.assertEqual(summary["source_kind"], "article")
+            md = Path(summary["markdown_path"]).read_text(encoding="utf-8")
+            html = Path(summary["html_path"]).read_text(encoding="utf-8")
+            # the remote image URL is rewritten to the local downloaded file
+            # in BOTH outputs
+            self.assertIn("![image](article_123_00.jpg)", md)
+            self.assertIn('<img src="article_123_00.jpg" alt="image">', html)
+            self.assertNotIn("pbs.twimg.com", md)
+            self.assertNotIn("pbs.twimg.com", html)
+            self.assertTrue(summary["html_path"].endswith("article_123.html"))
         resolve.assert_awaited_once()
 
     def test_indices_filter_preserves_original_index(self) -> None:
