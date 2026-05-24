@@ -31,3 +31,6 @@ __pycache__/
 .vscode/
 .idea/
 *.swp
+
+# Claude Code workspace (local-only, not part of the published repo).
+.claude/
