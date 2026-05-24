@@ -52,22 +52,32 @@ content (downloaded images, viewable inline):
 
 ## Setup
 
+Requires **Python 3.10+** and ~500 MB of disk for the Chromium binary that
+Playwright downloads.
+
 ```bash
 git clone https://github.com/YoppaV/twitter-mcp
 cd twitter-mcp
 python3 -m venv venv
-venv/bin/python -m ensurepip                   # if pip is missing
+venv/bin/python -m pip install --upgrade pip
 venv/bin/python -m pip install -r requirements.txt
 venv/bin/python -m playwright install chromium
 cp .env.example .env
-$EDITOR .env                                   # set TWITTER_USERNAME
+$EDITOR .env                                   # set TWITTER_USERNAME (required)
 ```
+
+`TWITTER_USERNAME` is the only **mandatory** value in `.env` — it's used to
+name the session file (`<handle>_twitter_state.json`) and `auth_login`
+refuses to run without it.
 
 WSL2 only — if Playwright complains about missing system libs:
 
 ```bash
 sudo venv/bin/python -m playwright install-deps chromium
 ```
+
+(`auth_login` opens a headed Chromium window. On WSL2 this is rendered by
+WSLg, which ships with Windows 11 by default.)
 
 ## First-time session init
 
@@ -112,9 +122,13 @@ from twitter_sdk.endpoints import bookmarks
 
 async def main():
     session = Path.home() / ".config/twitter-mcp/sessions/yourhandle_twitter_state.json"
-    async with BrowserSession(session, idle_timeout_s=0, headless=True) as ctx:
-        for tweet in await bookmarks.fetch(ctx.page, limit=20):
-            print(tweet.tweet_id, tweet.text[:80])
+    browser = BrowserSession(session, idle_timeout_s=0, headless=True)
+    try:
+        async with browser.page() as page:
+            for tweet in await bookmarks.fetch(page, limit=20):
+                print(tweet.tweet_id, tweet.text[:80])
+    finally:
+        await browser.shutdown()
 
 asyncio.run(main())
 ```
@@ -129,9 +143,14 @@ with photo/video/gif URLs already resolved.
 ### Claude Code
 
 `.mcp.json` is committed at the repo root. `cd` into this directory in
-Claude Code and the `twitter` server is auto-discovered. Set
-`TWITTER_SESSION_FILE` in `.env` (or rely on the `~/.config/twitter-mcp/`
-default). Then ask things like:
+Claude Code and the `twitter` server is auto-discovered. With
+`TWITTER_USERNAME` set in `.env`, the server auto-resolves the session at
+`~/.config/twitter-mcp/sessions/<handle>_twitter_state.json` — no extra
+config needed. Override with `TWITTER_SESSION_FILE` only if your session
+lives somewhere else.
+
+Restart Claude Code (or `/mcp` reconnect) after editing `.env` so the
+server picks up the new values. Then ask things like:
 
 - "What are my last 5 bookmarks?"
 - "Search Twitter for tweets about Anthropic in the last hour."
@@ -204,12 +223,14 @@ src/twitter_sdk/
     └── social_graph   followers · following · likers · retweeters
 ```
 
-`download_media` saves photos to `downloads/` **and** returns them inline as
-viewable images so the picture itself enters the conversation. Videos/GIFs
-are opt-in (`download_videos=True`) since Claude can't watch them. For a
-native X article it also writes `downloads/article_<id>.md` and
-`.html` — the article re-rendered (headings, text, images inlined where
-they appear), readable offline. `downloads/` is temporary scratch (gitignored).
+`download_media` saves photos to the downloads directory (defaults to
+`./downloads/`, override with `TWITTER_DOWNLOADS_DIR`) **and** returns them
+inline as viewable images so the picture itself enters the conversation.
+Videos/GIFs are opt-in (`download_videos=True`) since Claude can't watch
+them. For a native X article it also writes `article_<id>.md` and `.html`
+— the article re-rendered (headings, text, images inlined where they
+appear), readable offline. The default downloads directory is gitignored
+and treated as temporary scratch.
 
 `scraper.scroll_collect` is generic over the item type — it takes
 `(url, fragment, extractor)` plus an optional `key_of` for deduplication.
@@ -227,6 +248,19 @@ the `response` event handler, then dispatches synthetic Twitter GraphQL
 payloads through it to exercise the full path through `scroll_collect()`.
 
 CI runs the same suite on Python 3.10 + 3.12.
+
+### Real-network smoke
+
+For an end-to-end check against live x.com (handy after Twitter rotates a
+GraphQL fragment), there's a small runner that exercises every tool with
+conservative limits:
+
+```bash
+venv/bin/python -m scripts.smoke_real
+```
+
+Takes 2-4 minutes, prints a PASS/FAIL table per tool, and exits non-zero
+if anything broke. Requires a valid session (see "First-time session init").
 
 ## Troubleshooting
 
