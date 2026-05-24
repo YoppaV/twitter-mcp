@@ -36,7 +36,8 @@ binary content (downloaded images, viewable inline):
 ## Setup
 
 ```bash
-cd /home/juanr/projects/scraper
+git clone https://github.com/YoppaV/twitter-mcp
+cd twitter-mcp
 python3 -m venv venv
 venv/bin/python -m ensurepip                   # if pip is missing
 uv pip install --python venv/bin/python -r requirements.txt

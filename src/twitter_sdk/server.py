@@ -41,13 +41,20 @@ load_dotenv()
 
 mcp = FastMCP("twitter-sdk")
 
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-_DEFAULT_SESSION_DIR = _PROJECT_ROOT / "sessions"
+# Default location for the Playwright storage_state JSON when neither
+# ``TWITTER_SESSION_FILE`` nor ``TWITTER_USERNAME`` is set. Lives under XDG-ish
+# ``~/.config/twitter-mcp/sessions/`` so a clean checkout has nothing sensitive
+# inside the repo. ``<cwd>/sessions/`` is also probed as a legacy fallback so
+# pre-existing in-repo sessions keep working without manual migration.
+_DEFAULT_SESSION_DIR = Path.home() / ".config" / "twitter-mcp" / "sessions"
+_LEGACY_SESSION_DIR = Path.cwd() / "sessions"
 
 # Where ``download_media`` writes fetched media. Treated as temporary scratch
-# (gitignored). A future ``TWITTER_DOWNLOADS_DIR`` env var would plug in here —
-# this single constant is the only place that would need to change.
-_DOWNLOADS_DIR = _PROJECT_ROOT / "downloads"
+# (gitignored). Override with ``TWITTER_DOWNLOADS_DIR``; defaults to
+# ``<cwd>/downloads`` so the CLI dev-flow keeps writing into the checkout.
+_DOWNLOADS_DIR = Path(
+    os.getenv("TWITTER_DOWNLOADS_DIR", "").strip() or str(Path.cwd() / "downloads")
+).expanduser()
 
 
 def _resolve_session_path() -> Path:
@@ -57,11 +64,18 @@ def _resolve_session_path() -> Path:
 
     handle = os.getenv("TWITTER_USERNAME", "").strip()
     if handle:
-        return _DEFAULT_SESSION_DIR / f"{handle}_twitter_state.json"
+        candidate = _DEFAULT_SESSION_DIR / f"{handle}_twitter_state.json"
+        if candidate.exists():
+            return candidate
+        legacy = _LEGACY_SESSION_DIR / f"{handle}_twitter_state.json"
+        if legacy.exists():
+            return legacy
+        return candidate
 
-    candidates = sorted(_DEFAULT_SESSION_DIR.glob("*_twitter_state.json"))
-    if candidates:
-        return candidates[0]
+    for search_dir in (_DEFAULT_SESSION_DIR, _LEGACY_SESSION_DIR):
+        candidates = sorted(search_dir.glob("*_twitter_state.json"))
+        if candidates:
+            return candidates[0]
 
     return _DEFAULT_SESSION_DIR / "twitter_state.json"
 

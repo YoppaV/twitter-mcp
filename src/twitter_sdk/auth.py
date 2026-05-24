@@ -71,7 +71,7 @@ def session_summary(session_path: Path) -> dict[str, object]:
 
 
 def _handle_from_session_path(path: Path) -> str:
-    name = path.stem  # ``jrdiazSB_twitter_state``
+    name = path.stem  # e.g. ``yourhandle_twitter_state``
     if name.endswith("_twitter_state"):
         return name[: -len("_twitter_state")]
     return name

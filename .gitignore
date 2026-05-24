@@ -1,12 +1,16 @@
 # Credentials
 .env
+.env.*
+!.env.example
+
+# Playwright storage_state files (cookies — sensitive)
+sessions/
+*_state.json
+cookies*.json
 
 # Virtual environment
 venv/
 .venv/
-
-# Playwright storage_state files (cookies — sensitive)
-sessions/
 
 # Downloaded content and derived data
 data/

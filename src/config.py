@@ -1,4 +1,10 @@
-"""Configuration loader. Reads ``.env`` and exposes paths + Twitter handle."""
+"""Configuration loader. Reads ``.env`` and exposes the session paths.
+
+The default storage_state location is ``~/.config/twitter-mcp/sessions/`` so
+nothing sensitive ever lives inside the checkout. ``<cwd>/sessions/`` is also
+probed as a legacy fallback so pre-existing in-repo sessions keep working
+without manual migration.
+"""
 
 from __future__ import annotations
 
@@ -8,11 +14,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-SESSION_DIR = PROJECT_ROOT / "sessions"
-DATA_DIR = PROJECT_ROOT / "data"
-TWITTER_DATA_DIR = DATA_DIR / "twitter"
-TWITTER_BOOKMARKS_DIR = TWITTER_DATA_DIR / "bookmarks"
+DEFAULT_SESSION_DIR = Path.home() / ".config" / "twitter-mcp" / "sessions"
+LEGACY_SESSION_DIR = Path.cwd() / "sessions"
 
 
 class ConfigError(RuntimeError):
@@ -23,29 +26,30 @@ class ConfigError(RuntimeError):
 class Config:
     twitter_username: str
     session_dir: Path
-    data_dir: Path
-    twitter_data_dir: Path
-    twitter_bookmarks_dir: Path
 
     @property
     def twitter_session_file(self) -> Path:
         return self.session_dir / f"{self.twitter_username}_twitter_state.json"
 
 
+def _resolve_session_dir() -> Path:
+    """Prefer ``~/.config/twitter-mcp/sessions/``; fall back to ``<cwd>/sessions``
+    only if it already exists (legacy in-repo dev-flow)."""
+    if LEGACY_SESSION_DIR.exists() and any(LEGACY_SESSION_DIR.glob("*_twitter_state.json")):
+        return LEGACY_SESSION_DIR
+    return DEFAULT_SESSION_DIR
+
+
 def load_config() -> Config:
-    load_dotenv(PROJECT_ROOT / ".env")
+    load_dotenv()
 
     twitter_username = os.getenv("TWITTER_USERNAME", "").strip()
-
-    SESSION_DIR.mkdir(parents=True, exist_ok=True)
-    TWITTER_BOOKMARKS_DIR.mkdir(parents=True, exist_ok=True)
+    session_dir = _resolve_session_dir()
+    session_dir.mkdir(parents=True, exist_ok=True)
 
     return Config(
         twitter_username=twitter_username,
-        session_dir=SESSION_DIR,
-        data_dir=DATA_DIR,
-        twitter_data_dir=TWITTER_DATA_DIR,
-        twitter_bookmarks_dir=TWITTER_BOOKMARKS_DIR,
+        session_dir=session_dir,
     )
 
 
