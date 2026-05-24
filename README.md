@@ -67,11 +67,20 @@ Then bootstrap the project:
 ```bash
 git clone https://github.com/YoppaV/twitter-mcp
 cd twitter-mcp
+
+# 1. Create the virtualenv and install dependencies
 uv venv venv                                   # creates ./venv with the right Python
 uv pip install --python venv/bin/python -r requirements.txt
+
+# 2. Install the package itself editable — needed so the MCP Inspector
+#    (``mcp dev``) can load src/twitter_sdk/server.py as a single file.
+uv pip install --python venv/bin/python -e .
+
+# 3. Download the Chromium binary Playwright drives
 venv/bin/python -m playwright install chromium
-cp .env.example .env
-$EDITOR .env                                   # set TWITTER_USERNAME (required)
+
+# 4. Configure your handle
+cp .env.example .env                           # then set TWITTER_USERNAME (required)
 ```
 
 `TWITTER_USERNAME` is the only **mandatory** value in `.env` — it's used to
@@ -196,11 +205,23 @@ Logs (Desktop): `~/Library/Logs/Claude/` (macOS).
 venv/bin/python -m twitter_sdk.server
 ```
 
-Speaks JSON-RPC over stdio. Quick interactive poke:
+Speaks JSON-RPC over stdio. You normally don't run this directly — Claude
+Code and Claude Desktop spawn it for you.
+
+### MCP Inspector
+
+Inspect the server interactively with the bundled MCP Inspector (browse
+the 17 tools, fire them with arbitrary args, see raw responses):
 
 ```bash
-npx @modelcontextprotocol/inspector venv/bin/python -m twitter_sdk.server
+venv/bin/mcp dev src/twitter_sdk/server.py
 ```
+
+The `mcp` CLI ships with the `mcp[cli]` dependency, so no extra install
+is needed — just open the printed URL in your browser. Requires Node.js
+on `PATH` (the Inspector UI is a small Node app `mcp dev` spawns for you)
+and the editable install from setup step 2 (so `mcp dev` can resolve
+`twitter_sdk` as a package when it loads `server.py` as a single file).
 
 ## Configuration
 

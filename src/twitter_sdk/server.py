@@ -20,10 +20,16 @@ import httpx
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP, Image
 
-from . import downloader
-from .auth import USER_AGENT, SessionExpiredError, session_summary
-from .browser import DEFAULT_IDLE_TIMEOUT_S, BrowserSession
-from .endpoints import (
+# Absolute imports (not ``from . import ...``) so this module can also be
+# loaded as a single file by ``mcp dev src/twitter_sdk/server.py`` — that
+# loader uses ``spec_from_file_location`` and the resulting module has no
+# ``__package__``, which breaks relative imports. Requires the package to
+# be installed (editable: ``uv pip install -e .``) so ``twitter_sdk`` is
+# importable from sys.path.
+from twitter_sdk import downloader
+from twitter_sdk.auth import USER_AGENT, SessionExpiredError, session_summary
+from twitter_sdk.browser import DEFAULT_IDLE_TIMEOUT_S, BrowserSession
+from twitter_sdk.endpoints import (
     article,
     bookmarks,
     home,
@@ -34,8 +40,8 @@ from .endpoints import (
     tweet,
     user,
 )
-from .endpoints._ids import parse_tweet_id_or_url
-from .models import DownloadedMedia, MediaDownloadResult, MediaItem, SkippedMedia
+from twitter_sdk.endpoints._ids import parse_tweet_id_or_url
+from twitter_sdk.models import DownloadedMedia, MediaDownloadResult, MediaItem, SkippedMedia
 
 load_dotenv()
 
