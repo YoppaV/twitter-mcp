@@ -52,15 +52,23 @@ content (downloaded images, viewable inline):
 
 ## Setup
 
-Requires **Python 3.10+** and ~500 MB of disk for the Chromium binary that
-Playwright downloads.
+Requires **Python 3.10+**, [`uv`](https://docs.astral.sh/uv/) for dependency
+management, and ~500 MB of disk for the Chromium binary that Playwright
+downloads.
+
+Install `uv` (one-time, skip if you already have it):
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+Then bootstrap the project:
 
 ```bash
 git clone https://github.com/YoppaV/twitter-mcp
 cd twitter-mcp
-python3 -m venv venv
-venv/bin/python -m pip install --upgrade pip
-venv/bin/python -m pip install -r requirements.txt
+uv venv venv                                   # creates ./venv with the right Python
+uv pip install --python venv/bin/python -r requirements.txt
 venv/bin/python -m playwright install chromium
 cp .env.example .env
 $EDITOR .env                                   # set TWITTER_USERNAME (required)
@@ -111,7 +119,7 @@ telling you to re-run `auth_login`. They never silently re-login.
 For sibling projects that just want the SDK:
 
 ```bash
-pip install -e /path/to/twitter-mcp
+uv pip install -e /path/to/twitter-mcp
 ```
 
 ```python
