@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from urllib.parse import quote_plus
 
 from ..models import Tweet
+from .. import hermes_tweet
 from ..parsers import extract_search
 from ..scraper import scroll_collect
 
@@ -31,6 +32,9 @@ async def fetch(
         raise ValueError(f"mode must be 'top' or 'latest', got {mode!r}")
     if not query.strip():
         raise ValueError("query must not be empty")
+
+    if hermes_tweet.is_configured():
+        return await hermes_tweet.search(query=query, mode=mode, limit=limit)
 
     return await scroll_collect(
         page,

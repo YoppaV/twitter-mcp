@@ -232,6 +232,11 @@ and the editable install from setup step 2 (so `mcp dev` can resolve
 | `TWITTER_DOWNLOADS_DIR` | `./downloads` | Where `download_media` writes fetched media |
 | `BROWSER_IDLE_TIMEOUT_S` | `300` | Tear down Chromium after this many seconds idle |
 | `BROWSER_HEADLESS` | `true` | Set `false` to debug with a visible browser |
+| `HERMES_TWEET_API_KEY` | _empty_ | Optional. When set, `search_tweets` can use Hermes Tweet instead of browser search. |
+| `HERMES_TWEET_BASE_URL` | `https://api.xquik.com` | Optional Hermes Tweet API base URL. |
+
+`HERMES_TWEET_API_KEY` is optional and only affects `search_tweets`. All other
+tools keep using the local Playwright session and browser-backed readers.
 
 ## Architecture
 
