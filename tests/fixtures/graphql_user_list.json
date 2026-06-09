@@ -1,0 +1,90 @@
+{
+  "data": {
+    "user": {
+      "result": {
+        "timeline": {
+          "timeline": {
+            "instructions": [
+              {
+                "type": "TimelineAddEntries",
+                "entries": [
+                  {
+                    "entryId": "user-200",
+                    "content": {
+                      "entryType": "TimelineTimelineItem",
+                      "itemContent": {
+                        "itemType": "TimelineUser",
+                        "user_results": {
+                          "result": {
+                            "rest_id": "200",
+                            "core": {
+                              "screen_name": "alice",
+                              "name": "Alice"
+                            },
+                            "avatar": {"image_url": "https://pbs.twimg.com/200.jpg"},
+                            "verification": {"verified": false},
+                            "privacy": {"protected": false},
+                            "legacy": {
+                              "id_str": "200",
+                              "description": "alice bio",
+                              "followers_count": 100,
+                              "friends_count": 50,
+                              "statuses_count": 1000,
+                              "listed_count": 1
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "entryId": "user-201",
+                    "content": {
+                      "entryType": "TimelineTimelineItem",
+                      "itemContent": {
+                        "itemType": "TimelineUser",
+                        "user_results": {
+                          "result": {
+                            "rest_id": "201",
+                            "core": {
+                              "screen_name": "bob",
+                              "name": "Bob"
+                            },
+                            "verification": {"verified": true},
+                            "privacy": {"protected": false},
+                            "legacy": {
+                              "id_str": "201",
+                              "description": "bob bio",
+                              "followers_count": 200,
+                              "friends_count": 100,
+                              "statuses_count": 2000,
+                              "listed_count": 2
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "entryId": "user-202",
+                    "content": {
+                      "entryType": "TimelineTimelineItem",
+                      "itemContent": {
+                        "itemType": "TimelineUser",
+                        "user_results": {
+                          "result": {
+                            "__typename": "UserUnavailable"
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

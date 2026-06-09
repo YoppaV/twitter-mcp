@@ -1,0 +1,85 @@
+{
+  "data": {
+    "bookmark_timeline_v2": {
+      "timeline": {
+        "instructions": [
+          {
+            "type": "TimelineAddEntries",
+            "entries": [
+              {
+                "entryId": "tweet-1111",
+                "content": {
+                  "entryType": "TimelineTimelineItem",
+                  "itemContent": {
+                    "itemType": "TimelineTweet",
+                    "tweet_results": {
+                      "result": {
+                        "rest_id": "1111",
+                        "core": {
+                          "user_results": {
+                            "result": {
+                              "rest_id": "10",
+                              "core": {"screen_name": "alice", "name": "Alice"}
+                            }
+                          }
+                        },
+                        "legacy": {
+                          "id_str": "1111",
+                          "created_at": "Mon Apr 13 10:00:00 +0000 2026",
+                          "full_text": "Hello world from Alice",
+                          "favorite_count": 5,
+                          "retweet_count": 1,
+                          "reply_count": 0,
+                          "quote_count": 0,
+                          "lang": "en",
+                          "entities": {"hashtags": [], "user_mentions": [], "urls": []}
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "entryId": "tweet-2222",
+                "content": {
+                  "entryType": "TimelineTimelineItem",
+                  "itemContent": {
+                    "itemType": "TimelineTweet",
+                    "tweet_results": {
+                      "result": {
+                        "rest_id": "2222",
+                        "core": {
+                          "user_results": {
+                            "result": {
+                              "rest_id": "20",
+                              "core": {"screen_name": "bob", "name": "Bob"}
+                            }
+                          }
+                        },
+                        "legacy": {
+                          "id_str": "2222",
+                          "created_at": "Tue Apr 14 11:00:00 +0000 2026",
+                          "full_text": "Reply from Bob",
+                          "favorite_count": 9,
+                          "retweet_count": 0,
+                          "reply_count": 0,
+                          "quote_count": 0,
+                          "lang": "en",
+                          "entities": {"hashtags": [{"text": "tag1"}], "user_mentions": [{"screen_name": "alice"}], "urls": []}
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "entryId": "cursor-bottom-xyz",
+                "content": {"entryType": "TimelineTimelineCursor", "cursorType": "Bottom"}
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

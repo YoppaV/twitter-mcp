@@ -1,0 +1,37 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  unittest:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: requirements.txt
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          # The Playwright Python package is enough — the test suite mocks
+          # the browser via FakePage (see tests/test_server.py), so we skip
+          # `playwright install chromium` to keep CI fast and self-contained.
+          uv venv --python ${{ matrix.python-version }}
+          uv pip install -r requirements.txt
+
+      - name: Run tests
+        run: uv run python -m unittest discover tests -v

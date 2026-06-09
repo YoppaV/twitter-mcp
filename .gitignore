@@ -1,0 +1,36 @@
+# Credentials
+.env
+.env.*
+!.env.example
+
+# Playwright storage_state files (cookies — sensitive)
+sessions/
+*_state.json
+cookies*.json
+
+# Virtual environment
+venv/
+.venv/
+
+# Downloaded content and derived data
+data/
+
+# Media fetched by the download_media tool (temporary scratch)
+downloads/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Claude Code workspace (local-only, not part of the published repo).
+.claude/

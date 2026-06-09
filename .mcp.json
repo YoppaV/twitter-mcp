@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "twitter": {
+      "command": "venv/bin/python",
+      "args": ["-m", "twitter_sdk.server"],
+      "env": {
+        "PYTHONPATH": "src",
+        "BROWSER_HEADLESS": "true",
+        "BROWSER_IDLE_TIMEOUT_S": "300"
+      }
+    }
+  }
+}

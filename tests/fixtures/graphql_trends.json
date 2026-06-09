@@ -1,0 +1,70 @@
+{
+  "data": {
+    "timeline_response": {
+      "timeline_response": {
+        "timeline": {
+          "instructions": [
+            {
+              "type": "TimelineAddEntries",
+              "entries": [
+                {
+                  "entryId": "trend-0",
+                  "content": {
+                    "entryType": "TimelineTimelineItem",
+                    "itemContent": {
+                      "itemType": "TimelineTrend",
+                      "trend": {
+                        "name": "Claude 4.7",
+                        "trend_keyword": "Claude 4.7",
+                        "trend_url": {"url": "https://x.com/search?q=Claude+4.7"},
+                        "trend_metadata": {
+                          "domain_context": "Technology",
+                          "meta_description": "15.2K posts"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "entryId": "trend-1",
+                  "content": {
+                    "entryType": "TimelineTimelineItem",
+                    "itemContent": {
+                      "itemType": "TimelineTrend",
+                      "trend": {
+                        "name": "Real Madrid",
+                        "trend_keyword": "Real Madrid",
+                        "trend_url": {"url": "https://x.com/search?q=Real+Madrid"},
+                        "trend_metadata": {
+                          "domain_context": "Sports",
+                          "meta_description": "302K Tweets"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "entryId": "trend-2",
+                  "content": {
+                    "entryType": "TimelineTimelineItem",
+                    "itemContent": {
+                      "itemType": "TimelineTrend",
+                      "trend": {
+                        "name": "#NewYearsDay",
+                        "trend_keyword": "NewYearsDay",
+                        "trend_url": {"url": "https://x.com/search?q=%23NewYearsDay"},
+                        "trend_metadata": {
+                          "domain_context": "Trending"
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  }
+}

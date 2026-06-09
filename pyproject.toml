@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "twitter-sdk"
+version = "0.1.0"
+description = "Read-only MCP server exposing Twitter/X bookmarks, home, search, tweets, and profiles to Claude."
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Juan Rodríguez Díaz de Greñu"},
+]
+dependencies = [
+    "httpx>=0.27",
+    "mcp[cli]>=1.0",
+    "playwright>=1.48",
+    "python-dotenv>=1.0",
+    "rich>=13.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/YoppaV/twitter-mcp"
+Issues = "https://github.com/YoppaV/twitter-mcp/issues"
+
+[project.scripts]
+twitter-sdk = "twitter_sdk.server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["twitter_sdk*"]
